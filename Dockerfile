@@ -10,8 +10,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ app/
 COPY proto/ proto/
-COPY gen_proto.sh alembic.ini start.sh ./
-COPY migrations/ migrations/
+COPY gen_proto.sh start.sh openapi.json ./
 # gRPC stubs (ADR-0020) are generated here, never committed.
 RUN ./gen_proto.sh
 
@@ -22,13 +21,12 @@ COPY tests/ tests/
 COPY ruff.toml .
 
 FROM dev AS lint
-RUN ruff check app/ tests/ migrations/
+RUN ruff check app/ tests/
 
 FROM dev AS test
 RUN pytest
 
 FROM base AS final
-# 8000: HTTP, routed by Traefik. 9090: gRPC, internal to home-platform only.
-EXPOSE 8000 9090
-# Applies migrations (when a database is configured), then runs uvicorn.
+# 8000: HTTP, internal to home-platform only (mkt-ui's server).
+EXPOSE 8000
 CMD ["./start.sh"]

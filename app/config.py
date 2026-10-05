@@ -4,34 +4,15 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
-    # APP_NAME must match this app's ECR repo / IAM role name / Postgres
-    # database name / Route53 subdomain -- one name ties the whole platform
-    # integration together, see docs/app-platform.md in nyc_pa_aws_gitops.
-    app_name: str = os.environ.get("APP_NAME", "app")
+    # APP_NAME must match this app's ECR repo / IAM role name -- one name ties
+    # the platform integration together, see docs/app-platform.md in
+    # nyc_pa_aws_gitops.
+    app_name: str = os.environ.get("APP_NAME", "mkt-api")
 
-    # SESSION_SECRET should come from SSM (/home-platform/<app>/session-secret)
-    # once deployed -- the default here is only for local dev/tests, never
-    # use it in production.
-    session_secret: str = os.environ.get("SESSION_SECRET", "dev-insecure-secret-change-me")
-
-    # Postgres (ADR-0016). POSTGRES_PASSWORD arrives via the platform's
-    # deploy-time .env convention -- unset locally means db-dependent
-    # features degrade gracefully instead of crashing (see app/db.py).
-    postgres_host: str = os.environ.get("POSTGRES_HOST", "postgres")
-    postgres_password: str | None = os.environ.get("POSTGRES_PASSWORD")
-    # Full SQLAlchemy URL, overriding the two above. Unset in production;
-    # tests set it to a SQLite file to run the migrations without Postgres.
-    database_url: str | None = os.environ.get("DATABASE_URL")
-
-    # gRPC server (ADR-0020): internal-only, port 9090 by convention.
-    grpc_port: int = int(os.environ.get("GRPC_PORT", "9090"))
-
-    # Authentik OIDC (ADR-0017, Pattern A). Both unset means auth routes
-    # respond 501 instead of crashing -- lets this template run standalone
-    # before an app is actually onboarded to Authentik.
-    authentik_base_url: str = os.environ.get("AUTHENTIK_BASE_URL", "https://auth.billandjessie.com")
-    authentik_client_id: str | None = os.environ.get("AUTHENTIK_CLIENT_ID")
-    authentik_client_secret: str | None = os.environ.get("AUTHENTIK_CLIENT_SECRET")
+    # The services it reads, over gRPC on the home-platform network (ADR-0020).
+    secmaster_grpc: str = os.environ.get("SECMASTER_GRPC", "secmaster-svc:9090")
+    quote_grpc: str = os.environ.get("QUOTE_GRPC", "quote-svc:9090")
+    grpc_timeout_seconds: float = float(os.environ.get("GRPC_TIMEOUT_SECONDS", "10"))
 
 
 settings = Settings()

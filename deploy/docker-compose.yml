@@ -20,9 +20,8 @@ services:
     env_file:
       - .env
     # Internal only: no Traefik route and no DNS record. mkt-api has no UI
-    # and no Authentik client (apps/registry.yml), so HTTP on 8000 and gRPC on
-    # 9090 (mkt-ui's server) are reachable only on the home-platform network, as
-    # mkt-api:8000 and mkt-api:9090.
+    # and no Authentik client (apps/registry.yml): HTTP on 8000 is reachable
+    # only on the home-platform network, as mkt-api:8000 (mkt-ui's server).
     networks:
       - home-platform
 
