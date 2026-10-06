@@ -1,6 +1,148 @@
 {
   "components": {
     "schemas": {
+      "BarOut": {
+        "properties": {
+          "close": {
+            "title": "Close",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "high": {
+            "title": "High",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "last_date": {
+            "title": "Last Date",
+            "type": "string"
+          },
+          "low": {
+            "title": "Low",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "last_date",
+          "open",
+          "high",
+          "low",
+          "close",
+          "source",
+          "inputs"
+        ],
+        "title": "BarOut",
+        "type": "object"
+      },
+      "BarSeriesOut": {
+        "properties": {
+          "bars": {
+            "items": {
+              "$ref": "#/components/schemas/BarOut"
+            },
+            "title": "Bars",
+            "type": "array"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "%",
+              "bp"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "inputs",
+          "bars"
+        ],
+        "title": "BarSeriesOut",
+        "type": "object"
+      },
+      "BarsResponse": {
+        "properties": {
+          "block": {
+            "title": "Block",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "final": {
+            "title": "Final",
+            "type": "boolean"
+          },
+          "interval": {
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "quarter",
+              "year"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/BarSeriesOut"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interval",
+          "block",
+          "start",
+          "end",
+          "final",
+          "series"
+        ],
+        "title": "BarsResponse",
+        "type": "object"
+      },
       "CompactSeriesOut": {
         "properties": {
           "dates": {
@@ -723,6 +865,86 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/bars": {
+      "get": {
+        "description": "Bars for a chart: its series at one interval, one fixed block at a time (app/blocks.py).\n\nA series is an instrument (`UST-10Y-CMT`: its yield in percent), `spread(LONG,SHORT)` or\n`fly(WING,BODY,WING)` (basis points). Blocks are a year of days or a decade of weeks or months, so a\nscreenful is a handful of requests and the same block is always the same URL: a finished\nblock (`final`) is cached by the browser for a day. `source` (UST-PAR, H15-TCM) narrows yields to one\npublisher. All arithmetic is Decimal; values are strings.",
+        "operationId": "getBars",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "series",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 14,
+              "minItems": 1,
+              "title": "Series",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": true,
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "block",
+            "required": true,
+            "schema": {
+              "title": "Block",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Source",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BarsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Bars"
+      }
+    },
     "/api/curve": {
       "get": {
         "description": "The curve on a date (default: the latest), plus the same curve `compare` before it (1W, 1M, 1Y).\n\nEach uses the last business day on or before its date that has values.",
