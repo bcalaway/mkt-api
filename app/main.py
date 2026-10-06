@@ -18,6 +18,12 @@ app = FastAPI(
     version="1",
     description="The market data platform's API: Treasury CMT yields, curves, spreads and the security master. "
                 "Instruments by short name; values as decimal strings.",
+    # Swagger UI and the schema under /api/, which mkt-ui's server passes through for the signed-in user:
+    # https://mkt.billandjessie.com/api/docs (Bill, 2026-10-06). No ReDoc, no OAuth redirect page.
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
+    redoc_url=None,
+    swagger_ui_oauth2_redirect_url=None,
 )
 app.include_router(api.router)
 app.add_exception_handler(UpstreamError, api.upstream_error_handler)

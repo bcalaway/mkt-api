@@ -19,6 +19,8 @@ JSON under `/api/` (`app/api.py`), read from secmaster-svc and quote-svc over gR
 
 A service that doesn't answer is a 502 naming it; an unknown name is a 404.
 
+**Swagger UI:** https://mkt.billandjessie.com/api/docs (signed in through Authentik, passed through by mkt-ui's server), with the live schema at `/api/openapi.json`; "Try it out" works for every route, all GETs.
+
 **The schema is the contract.** `openapi.json` is committed and a test fails if it's out of date (`python -m app.openapi > openapi.json` regenerates it). mkt-ui's typed client is generated from it, so a change here is an API change: update mkt-ui in step.
 
 ## How it runs
