@@ -221,6 +221,16 @@ class CompactSeriesResponse(BaseModel):
     series: list[CompactSeriesOut]
 
 
+class CompactSpreadResponse(BaseModel):
+    name: str
+    long: str
+    short: str
+    start: str
+    end: str
+    dates: list[str]
+    bps: list[str]  # long minus short in basis points, one per date both have
+
+
 class SeriesResponse(BaseModel):
     start: str
     end: str
@@ -415,6 +425,25 @@ def spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None = None,
                 for x in bars([(d, Decimal(basis_points(a[d], b[d])), None) for d in sorted(a.keys() & b.keys())],
                               interval)],
     )
+
+
+@router.get("/spread/daily", operation_id="getDailySpread", response_model=CompactSpreadResponse)
+def daily_spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None = None, end: date | None = None):
+    """Every day's spread in basis points in a compact form (columns), default all of history, for a chart that
+    loads once and zooms without asking again.
+    """
+    end = end or _today()
+    start = start or date(1962, 1, 1)
+    if start > end:
+        raise HTTPException(422, f"start {start} is after end {end}")
+    lo, sh = _resolve(sec, long), _resolve(sec, short)
+    got = {s.sec_id: {p.as_of: p.value for p in s.points}
+           for s in quo.series([lo.sec_id, sh.sec_id], start.isoformat(), end.isoformat())}
+    a, b = got.get(lo.sec_id, {}), got.get(sh.sec_id, {})
+    dates = sorted(a.keys() & b.keys())
+    return CompactSpreadResponse(name=f"{lo.short_name} - {sh.short_name}", long=lo.short_name, short=sh.short_name,
+                                 start=start.isoformat(), end=end.isoformat(), dates=dates,
+                                 bps=[basis_points(a[d], b[d]) for d in dates])
 
 
 def upstream_error_handler(_request, exc: UpstreamError):

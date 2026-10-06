@@ -16,6 +16,7 @@ JSON under `/api/` (`app/api.py`), read from secmaster-svc and quote-svc over gR
 | `GET /api/series?name=&name=&start=&end=&source=&interval=` | golden yields (or one source's) with the source of each; default a year, daily; `interval` week, month, quarter or year gives bars (open, high, low, close) |
 | `GET /api/curve?date=&compare=1W&compare=1M&compare=1Y` | the curve on a date (default latest) and before it, each on the last business day on or before its date |
 | `GET /api/series/daily?name=&start=&end=&source=` | every day since 1962 (default) in columns: dates, percents, source runs, for a chart that loads once and zooms locally |
+| `GET /api/spread/daily?long=&short=&start=&end=` | every day's spread since 1962 (default) in columns: dates and basis points |
 | `GET /api/spread?long=UST-10Y-CMT&short=UST-2Y-CMT&start=&end=&interval=` | long minus short in basis points, daily or in bars |
 
 A service that doesn't answer is a 502 naming it; an unknown name is a 404.
