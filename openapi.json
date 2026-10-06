@@ -1,6 +1,74 @@
 {
   "components": {
     "schemas": {
+      "CompactSeriesOut": {
+        "properties": {
+          "dates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dates",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "percents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Percents",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRun"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "tenor": {
+            "title": "Tenor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "tenor",
+          "dates",
+          "percents",
+          "sources"
+        ],
+        "title": "CompactSeriesOut",
+        "type": "object"
+      },
+      "CompactSeriesResponse": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/CompactSeriesOut"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "series"
+        ],
+        "title": "CompactSeriesResponse",
+        "type": "object"
+      },
       "CurveOut": {
         "properties": {
           "date": {
@@ -436,6 +504,24 @@
           "series"
         ],
         "title": "SeriesResponse",
+        "type": "object"
+      },
+      "SourceRun": {
+        "properties": {
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "source"
+        ],
+        "title": "SourceRun",
         "type": "object"
       },
       "SpreadPointOut": {
@@ -881,6 +967,95 @@
           }
         },
         "summary": "Series"
+      }
+    },
+    "/api/series/daily": {
+      "get": {
+        "description": "Every day's yield in a compact form (columns, not objects), default all of history: for a chart that\nloads once and zooms without asking again (about 16,000 days per instrument since 1962).",
+        "operationId": "getDailySeries",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 14,
+              "minItems": 1,
+              "title": "Name",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Source",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactSeriesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Daily Series"
       }
     },
     "/api/spread": {

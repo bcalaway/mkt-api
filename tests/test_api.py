@@ -160,3 +160,12 @@ def test_spread_in_bars():
     assert (w["date"], w["last_date"], w["open_bp"], w["high_bp"], w["low_bp"], w["bp"]) == (
         "2026-09-28", "2026-10-02", "54", "54", "52", "52")
     assert (w["long"], w["short"]) == ("4.10", "3.58")
+
+
+def test_daily_series_in_columns():
+    out = client.get("/api/series/daily", params={"name": "UST-10Y-CMT"}).json()
+    assert out["start"] == "1962-01-01" and out["end"] == "2026-10-03"
+    [ten] = out["series"]
+    assert ten["dates"] == ["2026-09-30", "2026-10-01", "2026-10-02"]
+    assert ten["percents"] == ["4.15", "4.12", "4.10"]
+    assert ten["sources"] == [{"start": 0, "source": "UST-PAR"}, {"start": 2, "source": "H15-TCM"}]

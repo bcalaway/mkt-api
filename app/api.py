@@ -202,6 +202,25 @@ class SeriesOut(BaseModel):
     points: list[PointOut]
 
 
+class SourceRun(BaseModel):
+    start: int  # the index in dates where this source starts
+    source: str
+
+
+class CompactSeriesOut(BaseModel):
+    name: str
+    tenor: str
+    dates: list[str]
+    percents: list[str]  # close in percent, one per date
+    sources: list[SourceRun]  # runs: each source applies from its index to the next run's
+
+
+class CompactSeriesResponse(BaseModel):
+    start: str
+    end: str
+    series: list[CompactSeriesOut]
+
+
 class SeriesResponse(BaseModel):
     start: str
     end: str
@@ -318,6 +337,30 @@ def series(sec: Sec, quo: Quo, name: Annotated[list[str], Query(min_length=1, ma
     return SeriesResponse(start=start.isoformat(), end=end.isoformat(), interval=interval, series=[
         SeriesOut(name=i.short_name, tenor=i.tenor, points=points(i.sec_id)) for i in found
     ])
+
+
+@router.get("/series/daily", operation_id="getDailySeries", response_model=CompactSeriesResponse)
+def daily_series(sec: Sec, quo: Quo, name: Annotated[list[str], Query(min_length=1, max_length=14)],
+                 start: date | None = None, end: date | None = None, source: str = ""):
+    """Every day's yield in a compact form (columns, not objects), default all of history: for a chart that
+    loads once and zooms without asking again (about 16,000 days per instrument since 1962).
+    """
+    end = end or _today()
+    start = start or date(1962, 1, 1)
+    if start > end:
+        raise HTTPException(422, f"start {start} is after end {end}")
+    found = [_resolve(sec, n) for n in name]
+    got = {s.sec_id: s for s in quo.series([i.sec_id for i in found], start.isoformat(), end.isoformat(), source)}
+    out = []
+    for i in found:
+        pts = got[i.sec_id].points if i.sec_id in got else []
+        runs: list[SourceRun] = []
+        for n, p in enumerate(pts):
+            if not runs or runs[-1].source != p.source:
+                runs.append(SourceRun(start=n, source=p.source))
+        out.append(CompactSeriesOut(name=i.short_name, tenor=i.tenor, dates=[p.as_of for p in pts],
+                                    percents=[percent(p.value) for p in pts], sources=runs))
+    return CompactSeriesResponse(start=start.isoformat(), end=end.isoformat(), series=out)
 
 
 @router.get("/curve", operation_id="getCurves", response_model=CurveResponse)
