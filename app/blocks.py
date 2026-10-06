@@ -4,14 +4,16 @@ A chart asks `/api/bars` for its series at one interval, one block at a time.
 Blocks are fixed, so the same block is always the same URL and a finished
 block can be kept by the browser:
 
-| interval                | block             | id        | bars per series |
-|-------------------------|-------------------|-----------|-----------------|
-| day                     | a calendar month  | `2026-10` | about 21        |
-| week                    | a year            | `2026`    | 52 or 53        |
-| month, quarter, year    | a decade          | `2020`    | 120, 40, 10     |
+| interval                | block             | id     | bars per series |
+|-------------------------|-------------------|--------|-----------------|
+| day                     | a calendar year   | `2026` | about 250       |
+| week                    | a decade          | `2020` | about 520       |
+| month, quarter, year    | a decade          | `2020` | 120, 40, 10     |
 
-A block holds whole periods: a week belongs to the year its Monday is in, so
-the last week of December can run into January without being split.
+So a screenful is a handful of requests whatever the zoom: three years of
+days is four blocks, fifteen years of weeks two or three, all of history in
+months seven. A block holds whole periods: a week belongs to the decade its
+Monday is in, so a week running from December into January is never split.
 
 A series is an instrument by short name or alias (`UST-10Y-CMT`, its yield in
 percent), `spread(LONG,SHORT)` (long minus short in basis points) or
@@ -50,31 +52,24 @@ def _first_monday(year: int) -> date:
 
 def block(interval: Interval, block_id: str) -> Block:
     """The block `block_id` at `interval`; BadRequest if it isn't one."""
-    if interval == "day":
-        m = re.fullmatch(r"(\d{4})-(\d{2})", block_id)
-        if not m or not 1 <= int(m.group(2)) <= 12:
-            raise BadRequest(f"a day block is a month like 2026-10, not {block_id!r}")
-        y, mo = int(m.group(1)), int(m.group(2))
-        start = date(y, mo, 1)
-        end = date(y + mo // 12, mo % 12 + 1, 1) - timedelta(days=1)
-        return Block(block_id, start, end)
     if not re.fullmatch(r"\d{4}", block_id):
-        raise BadRequest(f"a {interval} block is a year like 2026{' ending in 0' if interval != 'week' else ''}, "
-                         f"not {block_id!r}")
+        raise BadRequest(f"a block is a year like {'2026' if interval == 'day' else '2020'}, not {block_id!r}")
     y = int(block_id)
-    if interval == "week":
-        return Block(block_id, _first_monday(y), _first_monday(y + 1) - timedelta(days=1))
+    if interval == "day":
+        return Block(block_id, date(y, 1, 1), date(y, 12, 31))
     if y % 10:
         raise BadRequest(f"a {interval} block is a decade's first year (like 2020), not {block_id!r}")
+    if interval == "week":
+        return Block(block_id, _first_monday(y), _first_monday(y + 10) - timedelta(days=1))
     return Block(block_id, date(y, 1, 1), date(y + 10, 1, 1) - timedelta(days=1))
 
 
 def block_of(interval: Interval, d: date) -> str:
     """The id of the block a day's bar is in (what mkt-ui works out for itself)."""
     if interval == "day":
-        return f"{d.year:04d}-{d.month:02d}"
+        return f"{d.year:04d}"
     if interval == "week":
-        return f"{(d - timedelta(days=d.weekday())).year:04d}"
+        d -= timedelta(days=d.weekday())
     return f"{d.year - d.year % 10:04d}"
 
 

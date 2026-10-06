@@ -301,7 +301,7 @@ class BarSeriesOut(BaseModel):
 
 class BarsResponse(BaseModel):
     interval: Interval
-    block: str  # "2026-10" (day), "2026" (week), "2020" (month, quarter, year: a decade)
+    block: str  # "2026" (day: a year), "2020" (week, month, quarter, year: a decade)
     start: str  # the days the block covers (whole periods)
     end: str
     final: bool  # the block is over and settled: it won't change, and browsers keep it a day
@@ -494,8 +494,8 @@ def get_bars(response: Response, sec: Sec, quo: Quo,
     """Bars for a chart: its series at one interval, one fixed block at a time (app/blocks.py).
 
     A series is an instrument (`UST-10Y-CMT`: its yield in percent), `spread(LONG,SHORT)` or
-    `fly(WING,BODY,WING)` (basis points). Blocks are a month of days, a year of weeks or a decade of months,
-    so a request is a few dozen bars per series and the same block is always the same URL: a finished
+    `fly(WING,BODY,WING)` (basis points). Blocks are a year of days or a decade of weeks or months, so a
+    screenful is a handful of requests and the same block is always the same URL: a finished
     block (`final`) is cached by the browser for a day. `source` (UST-PAR, H15-TCM) narrows yields to one
     publisher. All arithmetic is Decimal; values are strings.
     """
