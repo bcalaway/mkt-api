@@ -169,3 +169,8 @@ def test_daily_series_in_columns():
     assert ten["dates"] == ["2026-09-30", "2026-10-01", "2026-10-02"]
     assert ten["percents"] == ["4.15", "4.12", "4.10"]
     assert ten["sources"] == [{"start": 0, "source": "UST-PAR"}, {"start": 2, "source": "H15-TCM"}]
+
+
+def test_server_timing_header():
+    r = client.get("/api/instruments")
+    assert r.headers["server-timing"].startswith("api;dur=") and "upstream;dur=" in r.headers["server-timing"]

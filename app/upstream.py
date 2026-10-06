@@ -9,10 +9,23 @@ Each call opens a channel and closes it: a handful of calls per page, on the
 same host, so there's nothing worth pooling yet.
 """
 
+import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from app.config import settings
+
+# Milliseconds spent waiting on secmaster-svc and quote-svc in this request,
+# for the Server-Timing header (app/main.py). A list so the endpoint's
+# thread (which gets a copy of the context) adds to the request's own total.
+_upstream_ms: ContextVar[list[float] | None] = ContextVar("upstream_ms", default=None)
+
+
+def start_timing() -> list[float]:
+    total = [0.0]
+    _upstream_ms.set(total)
+    return total
 
 
 class UpstreamError(RuntimeError):
@@ -103,6 +116,7 @@ class _Grpc:
     def _call(self, make_stub, method: str, request):
         import grpc  # here, so the rest of the app (and its tests) runs without compiled grpcio
 
+        t0 = time.perf_counter()
         try:
             with grpc.insecure_channel(self.target) as channel:
                 return getattr(make_stub(channel), method)(request, timeout=settings.grpc_timeout_seconds)
@@ -110,6 +124,10 @@ class _Grpc:
             if e.code() == grpc.StatusCode.NOT_FOUND:
                 raise NotFound(e.details()) from None
             raise UpstreamError(f"{self.target} {method}: {e.code().name} {e.details() or ''}".strip()) from None
+        finally:
+            total = _upstream_ms.get()
+            if total is not None:
+                total[0] += (time.perf_counter() - t0) * 1000
 
 
 class GrpcSecurities(_Grpc):
