@@ -15,7 +15,7 @@ import re
 import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -104,6 +104,45 @@ def offset_date(base: date, offset: str) -> date:
     return date(y, mo, min(base.day, last))
 
 
+# --- Bars: a series summed up per week, month, quarter or year ---
+
+Interval = Literal["day", "week", "month", "quarter", "year"]
+
+
+def period_start(d: date, interval: Interval) -> date:
+    """The first calendar day of d's period: the Monday of its week, the 1st of its month, quarter or year."""
+    if interval == "week":
+        return d - timedelta(days=d.weekday())
+    if interval == "month":
+        return d.replace(day=1)
+    if interval == "quarter":
+        return date(d.year, 3 * ((d.month - 1) // 3) + 1, 1)
+    if interval == "year":
+        return date(d.year, 1, 1)
+    return d
+
+
+def bars(points: list[tuple[str, Decimal, object]], interval: Interval) -> list[dict]:
+    """Open, high, low and close per period, from (date, value, extra) in date order; `extra` is the close's.
+
+    `date` is the period's start (for a day, the day), `last` the close's own date.
+    """
+    out: list[dict] = []
+    for d, v, extra in points:
+        start = period_start(date.fromisoformat(d), interval).isoformat()
+        if out and out[-1]["date"] == start:
+            b = out[-1]
+            b["high"], b["low"] = max(b["high"], v), min(b["low"], v)
+            b["close"], b["last"], b["extra"] = v, d, extra
+        else:
+            out.append({"date": start, "open": v, "high": v, "low": v, "close": v, "last": d, "extra": extra})
+    return out
+
+
+def _s(v: Decimal) -> str:
+    return format(v.normalize(), "f")
+
+
 # --- Models (the OpenAPI schema) ---
 
 
@@ -147,10 +186,14 @@ class InstrumentDetail(InstrumentSummary):
 
 
 class PointOut(BaseModel):
-    date: str
-    value: str
-    percent: str
-    source: str  # UST-PAR or H15-TCM: which publisher golden took it from
+    date: str  # the day; for a longer interval, the period's first calendar day
+    last_date: str  # the day the close is from (the same as date for daily points)
+    value: str  # the close, as a decimal rate
+    percent: str  # the close in percent
+    open_percent: str  # the period's first, highest and lowest values, in percent (all the close for a day)
+    high_percent: str
+    low_percent: str
+    source: str  # UST-PAR or H15-TCM: which publisher golden took the close from
 
 
 class SeriesOut(BaseModel):
@@ -162,6 +205,7 @@ class SeriesOut(BaseModel):
 class SeriesResponse(BaseModel):
     start: str
     end: str
+    interval: Interval
     series: list[SeriesOut]
 
 
@@ -186,9 +230,13 @@ class CurveResponse(BaseModel):
 
 
 class SpreadPointOut(BaseModel):
-    date: str
-    bp: str
-    long: str  # percent
+    date: str  # the day, or the period's first calendar day
+    last_date: str
+    bp: str  # the close
+    open_bp: str
+    high_bp: str
+    low_bp: str
+    long: str  # percent, on last_date
     short: str
 
 
@@ -198,6 +246,7 @@ class SpreadResponse(BaseModel):
     short: str
     start: str
     end: str
+    interval: Interval
     points: list[SpreadPointOut]
 
 
@@ -247,19 +296,27 @@ def search(sec: Sec, q: Annotated[str, Query(min_length=1, max_length=60)],
 
 @router.get("/series", operation_id="getSeries", response_model=SeriesResponse)
 def series(sec: Sec, quo: Quo, name: Annotated[list[str], Query(min_length=1, max_length=14)],
-           start: date | None = None, end: date | None = None, source: str = ""):
-    """Golden yields (or one source's: UST-PAR, H15-TCM) for instruments over a date range (default: a year)."""
+           start: date | None = None, end: date | None = None, source: str = "", interval: Interval = "day"):
+    """Golden yields (or one source's: UST-PAR, H15-TCM) for instruments over a date range (default: a year).
+
+    `interval` sums each series up per week, month, quarter or year: open, high, low and close, so all of
+    history fits a chart (about 780 monthly bars since 1962, against 16,000 days).
+    """
     end = end or _today()
     start = start or offset_date(end, "1Y")
     if start > end:
         raise HTTPException(422, f"start {start} is after end {end}")
     found = [_resolve(sec, n) for n in name]
     got = {s.sec_id: s for s in quo.series([i.sec_id for i in found], start.isoformat(), end.isoformat(), source)}
-    return SeriesResponse(start=start.isoformat(), end=end.isoformat(), series=[
-        SeriesOut(name=i.short_name, tenor=i.tenor, points=[
-            PointOut(date=p.as_of, value=p.value, percent=percent(p.value), source=p.source)
-            for p in (got[i.sec_id].points if i.sec_id in got else [])])
-        for i in found
+    def points(sec_id: int) -> list[PointOut]:
+        daily = [(p.as_of, Decimal(p.value), p.source) for p in (got[sec_id].points if sec_id in got else [])]
+        return [PointOut(date=b["date"], last_date=b["last"], value=_s(b["close"]), percent=percent(_s(b["close"])),
+                         open_percent=percent(_s(b["open"])), high_percent=percent(_s(b["high"])),
+                         low_percent=percent(_s(b["low"])), source=b["extra"])
+                for b in bars(daily, interval)]
+
+    return SeriesResponse(start=start.isoformat(), end=end.isoformat(), interval=interval, series=[
+        SeriesOut(name=i.short_name, tenor=i.tenor, points=points(i.sec_id)) for i in found
     ])
 
 
@@ -292,8 +349,12 @@ def curve(sec: Sec, quo: Quo, date_: Annotated[date | None, Query(alias="date")]
 
 
 @router.get("/spread", operation_id="getSpread", response_model=SpreadResponse)
-def spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None = None, end: date | None = None):
-    """long minus short in basis points on every date both have (2s10s: long=UST-10Y-CMT, short=UST-2Y-CMT)."""
+def spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None = None, end: date | None = None,
+           interval: Interval = "day"):
+    """long minus short in basis points on every date both have (2s10s: long=UST-10Y-CMT, short=UST-2Y-CMT).
+
+    `interval` sums the daily spread up per week, month, quarter or year, as for /api/series.
+    """
     end = end or _today()
     start = start or offset_date(end, "1Y")
     if start > end:
@@ -304,9 +365,12 @@ def spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None = None,
     a, b = got.get(lo.sec_id, {}), got.get(sh.sec_id, {})
     return SpreadResponse(
         name=f"{lo.short_name} - {sh.short_name}", long=lo.short_name, short=sh.short_name,
-        start=start.isoformat(), end=end.isoformat(),
-        points=[SpreadPointOut(date=d, bp=basis_points(a[d], b[d]), long=percent(a[d]), short=percent(b[d]))
-                for d in sorted(a.keys() & b.keys())],
+        start=start.isoformat(), end=end.isoformat(), interval=interval,
+        points=[SpreadPointOut(date=x["date"], last_date=x["last"], bp=_s(x["close"]), open_bp=_s(x["open"]),
+                               high_bp=_s(x["high"]), low_bp=_s(x["low"]), long=percent(a[x["last"]]),
+                               short=percent(b[x["last"]]))
+                for x in bars([(d, Decimal(basis_points(a[d], b[d])), None) for d in sorted(a.keys() & b.keys())],
+                              interval)],
     )
 
 

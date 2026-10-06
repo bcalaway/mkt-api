@@ -74,7 +74,9 @@ def test_series_with_percent_and_source(fakes):
                                             "start": "2026-10-01", "end": "2026-10-02"}).json()
     ten, two = out["series"]
     assert ten["name"] == "UST-10Y-CMT" and ten["points"][1] == {
-        "date": "2026-10-02", "value": "0.041", "percent": "4.10", "source": "H15-TCM"}
+        "date": "2026-10-02", "last_date": "2026-10-02", "value": "0.041", "percent": "4.10",
+        "open_percent": "4.10", "high_percent": "4.10", "low_percent": "4.10", "source": "H15-TCM"}
+    assert out["interval"] == "day"
     assert len(two["points"]) == 2
     _, quo = fakes
     assert quo.calls[-1] == ("series", (10, 2), "2026-10-01", "2026-10-02", "")
@@ -123,3 +125,38 @@ def test_the_committed_schema_is_current():
     # mkt-ui's typed client is generated from openapi.json: regenerate it with
     # `python -m app.openapi > openapi.json` after changing the API.
     assert (ROOT / "openapi.json").read_text() == schema_text()
+
+
+def test_period_starts():
+    d = date(2026, 10, 2)  # a Friday
+    assert api.period_start(d, "day") == d
+    assert api.period_start(d, "week") == date(2026, 9, 28)
+    assert api.period_start(d, "month") == date(2026, 10, 1)
+    assert api.period_start(d, "quarter") == date(2026, 10, 1)
+    assert api.period_start(date(2026, 8, 31), "quarter") == date(2026, 7, 1)
+    assert api.period_start(d, "year") == date(2026, 1, 1)
+
+
+def test_series_in_bars():
+    out = client.get("/api/series", params={"name": "UST-10Y-CMT", "start": "2026-09-01", "end": "2026-10-31",
+                                            "interval": "month"}).json()
+    sep, oct_ = out["series"][0]["points"]
+    assert out["interval"] == "month"
+    assert sep == {"date": "2026-09-01", "last_date": "2026-09-30", "value": "0.0415", "percent": "4.15",
+                   "open_percent": "4.15", "high_percent": "4.15", "low_percent": "4.15", "source": "UST-PAR"}
+    # October: 4.12 then 4.10; the close's source is the close's.
+    assert (oct_["date"], oct_["last_date"], oct_["open_percent"], oct_["high_percent"], oct_["low_percent"],
+            oct_["percent"], oct_["source"]) == ("2026-10-01", "2026-10-02", "4.12", "4.12", "4.10", "4.10", "H15-TCM")
+    week = client.get("/api/series", params={"name": "UST-10Y-CMT", "start": "2026-09-01", "end": "2026-10-31",
+                                             "interval": "week"}).json()["series"][0]["points"]
+    assert [(p["date"], p["high_percent"], p["low_percent"]) for p in week] == [("2026-09-28", "4.15", "4.10")]
+    assert client.get("/api/series", params={"name": "UST-10Y-CMT", "interval": "hour"}).status_code == 422
+
+
+def test_spread_in_bars():
+    out = client.get("/api/spread", params={"long": "UST-10Y-CMT", "short": "UST-2Y-CMT", "start": "2026-09-01",
+                                            "end": "2026-10-31", "interval": "week"}).json()
+    [w] = out["points"]
+    assert (w["date"], w["last_date"], w["open_bp"], w["high_bp"], w["low_bp"], w["bp"]) == (
+        "2026-09-28", "2026-10-02", "54", "54", "52", "52")
+    assert (w["long"], w["short"]) == ("4.10", "3.58")

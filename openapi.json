@@ -332,6 +332,22 @@
             "title": "Date",
             "type": "string"
           },
+          "high_percent": {
+            "title": "High Percent",
+            "type": "string"
+          },
+          "last_date": {
+            "title": "Last Date",
+            "type": "string"
+          },
+          "low_percent": {
+            "title": "Low Percent",
+            "type": "string"
+          },
+          "open_percent": {
+            "title": "Open Percent",
+            "type": "string"
+          },
           "percent": {
             "title": "Percent",
             "type": "string"
@@ -347,8 +363,12 @@
         },
         "required": [
           "date",
+          "last_date",
           "value",
           "percent",
+          "open_percent",
+          "high_percent",
+          "low_percent",
           "source"
         ],
         "title": "PointOut",
@@ -386,6 +406,17 @@
             "title": "End",
             "type": "string"
           },
+          "interval": {
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "quarter",
+              "year"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
           "series": {
             "items": {
               "$ref": "#/components/schemas/SeriesOut"
@@ -401,6 +432,7 @@
         "required": [
           "start",
           "end",
+          "interval",
           "series"
         ],
         "title": "SeriesResponse",
@@ -416,8 +448,24 @@
             "title": "Date",
             "type": "string"
           },
+          "high_bp": {
+            "title": "High Bp",
+            "type": "string"
+          },
+          "last_date": {
+            "title": "Last Date",
+            "type": "string"
+          },
           "long": {
             "title": "Long",
+            "type": "string"
+          },
+          "low_bp": {
+            "title": "Low Bp",
+            "type": "string"
+          },
+          "open_bp": {
+            "title": "Open Bp",
             "type": "string"
           },
           "short": {
@@ -427,7 +475,11 @@
         },
         "required": [
           "date",
+          "last_date",
           "bp",
+          "open_bp",
+          "high_bp",
+          "low_bp",
           "long",
           "short"
         ],
@@ -438,6 +490,17 @@
         "properties": {
           "end": {
             "title": "End",
+            "type": "string"
+          },
+          "interval": {
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "quarter",
+              "year"
+            ],
+            "title": "Interval",
             "type": "string"
           },
           "long": {
@@ -470,6 +533,7 @@
           "short",
           "start",
           "end",
+          "interval",
           "points"
         ],
         "title": "SpreadResponse",
@@ -715,7 +779,7 @@
     },
     "/api/series": {
       "get": {
-        "description": "Golden yields (or one source's: UST-PAR, H15-TCM) for instruments over a date range (default: a year).",
+        "description": "Golden yields (or one source's: UST-PAR, H15-TCM) for instruments over a date range (default: a year).\n\n`interval` sums each series up per week, month, quarter or year: open, high, low and close, so all of\nhistory fits a chart (about 780 monthly bars since 1962, against 16,000 days).",
         "operationId": "getSeries",
         "parameters": [
           {
@@ -775,6 +839,23 @@
               "title": "Source",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Interval",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -804,7 +885,7 @@
     },
     "/api/spread": {
       "get": {
-        "description": "long minus short in basis points on every date both have (2s10s: long=UST-10Y-CMT, short=UST-2Y-CMT).",
+        "description": "long minus short in basis points on every date both have (2s10s: long=UST-10Y-CMT, short=UST-2Y-CMT).\n\n`interval` sums the daily spread up per week, month, quarter or year, as for /api/series.",
         "operationId": "getSpread",
         "parameters": [
           {
@@ -857,6 +938,23 @@
                 }
               ],
               "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Interval",
+              "type": "string"
             }
           }
         ],
