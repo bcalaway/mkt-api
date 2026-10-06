@@ -6,7 +6,7 @@ It runs on the home platform's AWS hub (`bcalaway/nyc_pa_aws_gitops`) as a regis
 
 ## The API
 
-JSON under `/api/` (`app/api.py`), read from secmaster-svc and quote-svc over gRPC (`app/upstream.py`, with `proto/securities.proto` and `proto/quotes.proto` copied from those repos). Instruments by short name, never by sec_id; values as decimal strings, computed with `Decimal`: `value` is the rate as a decimal (`"0.041"`), `percent` the same in percent (`"4.10"`), spreads in basis points (`"52"`).
+JSON under `/api/` (`app/api.py`), read from secmaster-svc and quote-svc over gRPC (`app/upstream.py`, with `proto/securities.proto` and `proto/quotes.proto` copied from those repos). Instruments by short name, never by sec_id; values as decimal strings, computed with `Decimal`, and always decimals as stored (a 4.10% yield is `"0.041"`, a 52 bp spread `"0.0052"`), each with a display form beside it in the series' unit (`display`, or `close_display` and the like on bars: `"4.10"`, `"52"`) for screens and voice to show as given (Bill, 2026-10-06).
 
 | Endpoint | Answer |
 |---|---|

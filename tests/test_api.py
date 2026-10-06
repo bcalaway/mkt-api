@@ -36,6 +36,7 @@ def test_percent():
     assert api.percent("0.041") == "4.10"
     assert api.percent("0.04125") == "4.125"
     assert api.percent("0") == "0.00"
+    assert api.bp("0.0052") == "52" and api.bp("-0.00025") == "-2.5" and api.bp("0") == "0"
 
 
 def test_offset_dates():
@@ -54,7 +55,7 @@ def test_instruments_by_short_name_without_sec_ids():
 def test_an_instrument_by_alias_with_identifiers_notes_and_latest():
     six = client.get("/api/instruments/ust-6w-cmt").json()
     assert six["name"] == "UST-1.5M-CMT" and six["latest"] == {
-        "date": "2026-10-02", "value": "0.04", "percent": "4.00", "source": "UST-PAR"}
+        "date": "2026-10-02", "value": "0.04", "display": "4.00", "source": "UST-PAR"}
     ten = client.get("/api/instruments/UST-10Y-CMT").json()
     assert [i["scheme"] for i in ten["identifiers"]] == ["UST-PAR", "H15-TCM"]
     assert ten["identifiers"][0]["valid_from"] is None and ten["notes"][0]["key"] == "par-curve-method-2021"
@@ -73,7 +74,8 @@ def test_curve_uses_the_last_business_day_on_or_before_each_date():
     # Saturday the 3rd: Friday the 2nd's curve; the 1.5-month has a value only then.
     assert (latest["label"], latest["requested"], latest["date"]) == ("latest", "2026-10-03", "2026-10-02")
     assert [p["name"] for p in latest["points"]] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT"]
-    assert latest["points"][2]["percent"] == "4.10" and latest["missing"] == []
+    assert (latest["points"][2]["value"], latest["points"][2]["display"]) == ("0.041", "4.10")
+    assert latest["missing"] == []
     assert (one["label"], one["date"]) == ("1D", "2026-10-02")
     assert (two["date"], two["missing"]) == ("2026-10-01", ["UST-1.5M-CMT"])
     assert client.get("/api/curve", params={"compare": "1Q"}).status_code == 422
@@ -153,16 +155,20 @@ def test_bars_by_block(fakes):
     assert r.headers["cache-control"] == "private, max-age=300"
     ten, spread, fly = out["series"]
     assert (ten["key"], ten["unit"], ten["inputs"]) == ("UST-10Y-CMT", "%", [])
-    assert ten["bars"][-1] == {"date": "2026-10-02", "last_date": "2026-10-02", "open": "4.10", "high": "4.10",
-                              "low": "4.10", "close": "4.10", "source": "H15-TCM", "inputs": []}
+    # Values are decimals; the display forms are in the series' unit.
+    assert ten["bars"][-1] == {"date": "2026-10-02", "last_date": "2026-10-02", "open": "0.041", "high": "0.041",
+                              "low": "0.041", "close": "0.041", "open_display": "4.10", "high_display": "4.10",
+                              "low_display": "4.10", "close_display": "4.10", "source": "H15-TCM", "inputs": [],
+                              "inputs_display": []}
     assert (spread["key"], spread["label"], spread["unit"]) == (
         "spread(UST-10Y-CMT,UST-2Y-CMT)", "UST-10Y-CMT - UST-2Y-CMT", "bp")
-    assert [(x["date"], x["close"], x["inputs"]) for x in spread["bars"]] == [
-        ("2026-09-30", "54", ["4.15", "3.61"]), ("2026-10-01", "52", ["4.12", "3.60"]),
-        ("2026-10-02", "52", ["4.10", "3.58"])]
+    assert [(x["date"], x["close"], x["close_display"], x["inputs_display"]) for x in spread["bars"]] == [
+        ("2026-09-30", "0.0054", "54", ["4.15", "3.61"]), ("2026-10-01", "0.0052", "52", ["4.12", "3.60"]),
+        ("2026-10-02", "0.0052", "52", ["4.10", "3.58"])]
+    assert spread["bars"][-1]["inputs"] == ["0.041", "0.0358"]
     # 2 x 3.58 - 4.00 - 4.10 = -94 bp, on the one day all three have.
     assert fly["key"] == "fly(UST-1.5M-CMT,UST-2Y-CMT,UST-10Y-CMT)"
-    assert [(x["date"], x["close"]) for x in fly["bars"]] == [("2026-10-02", "-94")]
+    assert [(x["date"], x["close"], x["close_display"]) for x in fly["bars"]] == [("2026-10-02", "-0.0094", "-94")]
 
 
 def test_bars_by_week_and_decade(fakes):
@@ -171,8 +177,11 @@ def test_bars_by_week_and_decade(fakes):
                                            "interval": "week", "block": "2020"}).json()
     ten, spread = week["series"]
     assert [(x["date"], x["open"], x["high"], x["low"], x["close"], x["last_date"]) for x in ten["bars"]] == [
-        ("2026-09-28", "4.15", "4.15", "4.10", "4.10", "2026-10-02")]
-    assert [(x["date"], x["open"], x["low"], x["close"]) for x in spread["bars"]] == [("2026-09-28", "54", "52", "52")]
+        ("2026-09-28", "0.0415", "0.0415", "0.041", "0.041", "2026-10-02")]
+    assert [(x["open_display"], x["high_display"], x["low_display"], x["close_display"]) for x in ten["bars"]] == [
+        ("4.15", "4.15", "4.10", "4.10")]
+    assert [(x["date"], x["open_display"], x["low_display"], x["close_display"]) for x in spread["bars"]] == [
+        ("2026-09-28", "54", "52", "52")]
     # The yield's bars come from quote-svc's GetBars, over the block's whole weeks (up to today).
     assert ("bars", (10,), "2020-01-06", "2026-10-03", "week", "") in quo.calls
     old = client.get("/api/bars", params={"series": "UST-10Y-CMT", "interval": "month", "block": "1990"})
