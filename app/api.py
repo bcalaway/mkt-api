@@ -82,12 +82,6 @@ def percent(value: str) -> str:
     return format(p, "f")
 
 
-def basis_points(long: str, short: str) -> str:
-    """long - short in basis points, exactly: "0.0412", "0.036" -> "52"."""
-    bp = ((Decimal(long) - Decimal(short)) * 10000).normalize()
-    return format(bp, "f")
-
-
 def offset_date(base: date, offset: str) -> date:
     """`1W`, `1M`, `1Y`, `10D` before base (a month back from the 31st lands on the month's last day)."""
     m = OFFSET.match(offset.upper())
@@ -186,59 +180,6 @@ class InstrumentDetail(InstrumentSummary):
     latest: LatestOut | None
 
 
-class PointOut(BaseModel):
-    date: str  # the day; for a longer interval, the period's first calendar day
-    last_date: str  # the day the close is from (the same as date for daily points)
-    value: str  # the close, as a decimal rate
-    percent: str  # the close in percent
-    open_percent: str  # the period's first, highest and lowest values, in percent (all the close for a day)
-    high_percent: str
-    low_percent: str
-    source: str  # UST-PAR or H15-TCM: which publisher golden took the close from
-
-
-class SeriesOut(BaseModel):
-    name: str
-    tenor: str
-    points: list[PointOut]
-
-
-class SourceRun(BaseModel):
-    start: int  # the index in dates where this source starts
-    source: str
-
-
-class CompactSeriesOut(BaseModel):
-    name: str
-    tenor: str
-    dates: list[str]
-    percents: list[str]  # close in percent, one per date
-    sources: list[SourceRun]  # runs: each source applies from its index to the next run's
-
-
-class CompactSeriesResponse(BaseModel):
-    start: str
-    end: str
-    series: list[CompactSeriesOut]
-
-
-class CompactSpreadResponse(BaseModel):
-    name: str
-    long: str
-    short: str
-    start: str
-    end: str
-    dates: list[str]
-    bps: list[str]  # long minus short in basis points, one per date both have
-
-
-class SeriesResponse(BaseModel):
-    start: str
-    end: str
-    interval: Interval
-    series: list[SeriesOut]
-
-
 class CurvePointOut(BaseModel):
     name: str
     tenor: str
@@ -257,27 +198,6 @@ class CurveOut(BaseModel):
 
 class CurveResponse(BaseModel):
     curves: list[CurveOut]
-
-
-class SpreadPointOut(BaseModel):
-    date: str  # the day, or the period's first calendar day
-    last_date: str
-    bp: str  # the close
-    open_bp: str
-    high_bp: str
-    low_bp: str
-    long: str  # percent, on last_date
-    short: str
-
-
-class SpreadResponse(BaseModel):
-    name: str  # "UST-10Y-CMT - UST-2Y-CMT"
-    long: str
-    short: str
-    start: str
-    end: str
-    interval: Interval
-    points: list[SpreadPointOut]
 
 
 class BarOut(BaseModel):
@@ -352,64 +272,6 @@ def search(sec: Sec, q: Annotated[str, Query(min_length=1, max_length=60)],
     return [_summary(i) for i in sec.search(q, limit)]
 
 
-@router.get("/series", operation_id="getSeries", response_model=SeriesResponse)
-def series(sec: Sec, quo: Quo, name: Annotated[list[str], Query(min_length=1, max_length=14)],
-           start: date | None = None, end: date | None = None, source: str = "", interval: Interval = "day"):
-    """Golden yields (or one source's: UST-PAR, H15-TCM) for instruments over a date range (default: a year).
-
-    `interval` sums each series up per week, month, quarter or year: open, high, low and close, so all of
-    history fits a chart (about 780 monthly bars since 1962, against 16,000 days).
-    """
-    end = end or _today()
-    start = start or offset_date(end, "1Y")
-    if start > end:
-        raise HTTPException(422, f"start {start} is after end {end}")
-    found = [_resolve(sec, n) for n in name]
-    ids = [i.sec_id for i in found]
-    if interval == "day":
-        got = {s.sec_id: [PointOut(date=p.as_of, last_date=p.as_of, value=p.value, percent=percent(p.value),
-                                   open_percent=percent(p.value), high_percent=percent(p.value),
-                                   low_percent=percent(p.value), source=p.source) for p in s.points]
-               for s in quo.series(ids, start.isoformat(), end.isoformat(), source)}
-    else:
-        # quote-svc sums the bars up in its query: one bar per period crosses the network, not every day.
-        got = {s.sec_id: [PointOut(date=b.start, last_date=b.last, value=b.close, percent=percent(b.close),
-                                   open_percent=percent(b.open), high_percent=percent(b.high),
-                                   low_percent=percent(b.low), source=b.source) for b in s.bars]
-               for s in quo.bars(ids, start.isoformat(), end.isoformat(), interval, source)}
-
-    def points(sec_id: int) -> list[PointOut]:
-        return got.get(sec_id, [])
-
-    return SeriesResponse(start=start.isoformat(), end=end.isoformat(), interval=interval, series=[
-        SeriesOut(name=i.short_name, tenor=i.tenor, points=points(i.sec_id)) for i in found
-    ])
-
-
-@router.get("/series/daily", operation_id="getDailySeries", response_model=CompactSeriesResponse)
-def daily_series(sec: Sec, quo: Quo, name: Annotated[list[str], Query(min_length=1, max_length=14)],
-                 start: date | None = None, end: date | None = None, source: str = ""):
-    """Every day's yield in a compact form (columns, not objects), default all of history: for a chart that
-    loads once and zooms without asking again (about 16,000 days per instrument since 1962).
-    """
-    end = end or _today()
-    start = start or date(1962, 1, 1)
-    if start > end:
-        raise HTTPException(422, f"start {start} is after end {end}")
-    found = [_resolve(sec, n) for n in name]
-    got = {s.sec_id: s for s in quo.series([i.sec_id for i in found], start.isoformat(), end.isoformat(), source)}
-    out = []
-    for i in found:
-        pts = got[i.sec_id].points if i.sec_id in got else []
-        runs: list[SourceRun] = []
-        for n, p in enumerate(pts):
-            if not runs or runs[-1].source != p.source:
-                runs.append(SourceRun(start=n, source=p.source))
-        out.append(CompactSeriesOut(name=i.short_name, tenor=i.tenor, dates=[p.as_of for p in pts],
-                                    percents=[percent(p.value) for p in pts], sources=runs))
-    return CompactSeriesResponse(start=start.isoformat(), end=end.isoformat(), series=out)
-
-
 @router.get("/curve", operation_id="getCurves", response_model=CurveResponse)
 def curve(sec: Sec, quo: Quo, date_: Annotated[date | None, Query(alias="date")] = None,
           compare: Annotated[list[str] | None, Query(max_length=6)] = None):
@@ -436,51 +298,6 @@ def curve(sec: Sec, quo: Quo, date_: Annotated[date | None, Query(alias="date")]
                                             percent=percent(p.value), source=p.source))
         curves.append(CurveOut(label=label, requested=day.isoformat(), date=found, points=points, missing=missing))
     return CurveResponse(curves=curves)
-
-
-@router.get("/spread", operation_id="getSpread", response_model=SpreadResponse)
-def spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None = None, end: date | None = None,
-           interval: Interval = "day"):
-    """long minus short in basis points on every date both have (2s10s: long=UST-10Y-CMT, short=UST-2Y-CMT).
-
-    `interval` sums the daily spread up per week, month, quarter or year, as for /api/series.
-    """
-    end = end or _today()
-    start = start or offset_date(end, "1Y")
-    if start > end:
-        raise HTTPException(422, f"start {start} is after end {end}")
-    lo, sh = _resolve(sec, long), _resolve(sec, short)
-    got = {s.sec_id: {p.as_of: p.value for p in s.points}
-           for s in quo.series([lo.sec_id, sh.sec_id], start.isoformat(), end.isoformat())}
-    a, b = got.get(lo.sec_id, {}), got.get(sh.sec_id, {})
-    return SpreadResponse(
-        name=f"{lo.short_name} - {sh.short_name}", long=lo.short_name, short=sh.short_name,
-        start=start.isoformat(), end=end.isoformat(), interval=interval,
-        points=[SpreadPointOut(date=x["date"], last_date=x["last"], bp=_s(x["close"]), open_bp=_s(x["open"]),
-                               high_bp=_s(x["high"]), low_bp=_s(x["low"]), long=percent(a[x["last"]]),
-                               short=percent(b[x["last"]]))
-                for x in bars([(d, Decimal(basis_points(a[d], b[d])), None) for d in sorted(a.keys() & b.keys())],
-                              interval)],
-    )
-
-
-@router.get("/spread/daily", operation_id="getDailySpread", response_model=CompactSpreadResponse)
-def daily_spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None = None, end: date | None = None):
-    """Every day's spread in basis points in a compact form (columns), default all of history, for a chart that
-    loads once and zooms without asking again.
-    """
-    end = end or _today()
-    start = start or date(1962, 1, 1)
-    if start > end:
-        raise HTTPException(422, f"start {start} is after end {end}")
-    lo, sh = _resolve(sec, long), _resolve(sec, short)
-    got = {s.sec_id: {p.as_of: p.value for p in s.points}
-           for s in quo.series([lo.sec_id, sh.sec_id], start.isoformat(), end.isoformat())}
-    a, b = got.get(lo.sec_id, {}), got.get(sh.sec_id, {})
-    dates = sorted(a.keys() & b.keys())
-    return CompactSpreadResponse(name=f"{lo.short_name} - {sh.short_name}", long=lo.short_name, short=sh.short_name,
-                                 start=start.isoformat(), end=end.isoformat(), dates=dates,
-                                 bps=[basis_points(a[d], b[d]) for d in dates])
 
 
 class EventOut(BaseModel):
