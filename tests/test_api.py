@@ -183,3 +183,75 @@ def test_daily_spread_in_columns():
     out = client.get("/api/spread/daily", params={"long": "UST-10Y-CMT", "short": "UST-2Y-CMT"}).json()
     assert (out["name"], out["start"]) == ("UST-10Y-CMT - UST-2Y-CMT", "1962-01-01")
     assert out["dates"] == ["2026-09-30", "2026-10-01", "2026-10-02"] and out["bps"] == ["54", "52", "52"]
+
+
+def test_blocks():
+    from app.blocks import BadRequest, block, block_of, is_final
+
+    assert block("day", "2026-10") == block("day", "2026-10") and (block("day", "2026-02").end == date(2026, 2, 28))
+    # A week belongs to the year its Monday is in: 2026's weeks run from Monday 5 January to Sunday 3 January 2027.
+    w = block("week", "2026")
+    assert (w.start, w.end) == (date(2026, 1, 5), date(2027, 1, 3))
+    assert block_of("week", date(2026, 1, 2)) == "2025" and block_of("week", date(2027, 1, 3)) == "2026"
+    m = block("month", "2020")
+    assert (m.start, m.end) == (date(2020, 1, 1), date(2029, 12, 31))
+    assert block_of("month", date(2026, 10, 2)) == "2020" and block_of("day", date(2026, 10, 2)) == "2026-10"
+    for interval, bad in [("day", "2026"), ("day", "2026-13"), ("week", "2026-10"), ("month", "2026")]:
+        with pytest.raises(BadRequest):
+            block(interval, bad)
+    assert not is_final(block("day", "2026-09"), date(2026, 10, 3))
+    assert is_final(block("day", "2026-09"), date(2026, 10, 8))
+
+
+def test_series_expressions():
+    from app.blocks import BadRequest, parse
+
+    assert parse("UST-10Y-CMT").kind == "yield"
+    assert parse(" spread( UST-10Y-CMT , ust-2y-cmt ) ").names == ("UST-10Y-CMT", "ust-2y-cmt")
+    assert parse("FLY(UST-2Y-CMT,UST-5Y-CMT,UST-10Y-CMT)").kind == "fly"
+    for bad in ["spread(UST-10Y-CMT)", "fly(A,B)", "sum(A,B)", "A B", ""]:
+        with pytest.raises(BadRequest):
+            parse(bad)
+
+
+def test_bars_by_block(fakes):
+    r = client.get("/api/bars", params={"series": ["UST-10Y-CMT", "spread(UST-10Y-CMT,ust-2y-cmt)",
+                                                   "fly(UST-6W-CMT,UST-2Y-CMT,UST-10Y-CMT)"],
+                                        "interval": "day", "block": "2026-10"})
+    out = r.json()
+    assert (out["start"], out["end"], out["final"]) == ("2026-10-01", "2026-10-31", False)
+    assert r.headers["cache-control"] == "private, max-age=300"
+    ten, spread, fly = out["series"]
+    assert (ten["key"], ten["unit"], ten["inputs"]) == ("UST-10Y-CMT", "%", [])
+    assert ten["bars"][1] == {"date": "2026-10-02", "last_date": "2026-10-02", "open": "4.10", "high": "4.10",
+                              "low": "4.10", "close": "4.10", "source": "H15-TCM", "inputs": []}
+    assert (spread["key"], spread["label"], spread["unit"]) == (
+        "spread(UST-10Y-CMT,UST-2Y-CMT)", "UST-10Y-CMT - UST-2Y-CMT", "bp")
+    assert [(x["date"], x["close"], x["inputs"]) for x in spread["bars"]] == [
+        ("2026-10-01", "52", ["4.12", "3.60"]), ("2026-10-02", "52", ["4.10", "3.58"])]
+    # 2 x 3.58 - 4.00 - 4.10 = -94 bp, on the one day all three have.
+    assert fly["key"] == "fly(UST-1.5M-CMT,UST-2Y-CMT,UST-10Y-CMT)"
+    assert [(x["date"], x["close"]) for x in fly["bars"]] == [("2026-10-02", "-94")]
+
+
+def test_bars_by_week_and_decade(fakes):
+    _, quo = fakes
+    week = client.get("/api/bars", params={"series": ["UST-10Y-CMT", "spread(UST-10Y-CMT,UST-2Y-CMT)"],
+                                           "interval": "week", "block": "2026"}).json()
+    ten, spread = week["series"]
+    assert [(x["date"], x["open"], x["high"], x["low"], x["close"], x["last_date"]) for x in ten["bars"]] == [
+        ("2026-09-28", "4.15", "4.15", "4.10", "4.10", "2026-10-02")]
+    assert [(x["date"], x["open"], x["low"], x["close"]) for x in spread["bars"]] == [("2026-09-28", "54", "52", "52")]
+    # The yield's bars come from quote-svc's GetBars, over the block's whole weeks (up to today).
+    assert ("bars", (10,), "2026-01-05", "2026-10-03", "week", "") in quo.calls
+    old = client.get("/api/bars", params={"series": "UST-10Y-CMT", "interval": "month", "block": "1990"})
+    assert old.json()["final"] is True and old.headers["cache-control"] == "private, max-age=86400"
+    later = client.get("/api/bars", params={"series": "UST-10Y-CMT", "interval": "day", "block": "2027-01"}).json()
+    assert later["series"][0]["bars"] == [] and later["final"] is False
+
+
+def test_bars_rejects_bad_requests():
+    assert client.get("/api/bars", params={"series": "UST-10Y-CMT", "interval": "month", "block": "2026"}).status_code == 422
+    assert client.get("/api/bars", params={"series": "spread(UST-10Y-CMT)", "interval": "day",
+                                           "block": "2026-10"}).status_code == 422
+    assert client.get("/api/bars", params={"series": "NOPE", "interval": "day", "block": "2026-10"}).status_code == 404

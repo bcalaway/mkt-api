@@ -18,9 +18,10 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
+from app import blocks
 from app.upstream import GrpcQuotes, GrpcSecurities, Instrument, NotFound, Quotes, Securities, UpstreamError
 
 router = APIRouter(prefix="/api")
@@ -106,7 +107,7 @@ def offset_date(base: date, offset: str) -> date:
 
 # --- Bars: a series summed up per week, month, quarter or year ---
 
-Interval = Literal["day", "week", "month", "quarter", "year"]
+Interval = blocks.Interval
 
 
 def period_start(d: date, interval: Interval) -> date:
@@ -277,6 +278,34 @@ class SpreadResponse(BaseModel):
     end: str
     interval: Interval
     points: list[SpreadPointOut]
+
+
+class BarOut(BaseModel):
+    date: str  # the period's first calendar day (for a day, the day)
+    last_date: str  # the day the close is from
+    open: str  # in the series' unit: percent for a yield, basis points for a spread or fly
+    high: str
+    low: str
+    close: str
+    source: str  # a yield's close: UST-PAR or H15-TCM; "" for a spread or fly
+    inputs: list[str]  # a spread's or fly's instruments' yields in percent on last_date, in order; [] for a yield
+
+
+class BarSeriesOut(BaseModel):
+    key: str  # the series as asked for, with short names: "UST-10Y-CMT", "spread(UST-10Y-CMT,UST-2Y-CMT)"
+    label: str  # "UST-10Y-CMT - UST-2Y-CMT"
+    unit: Literal["%", "bp"]
+    inputs: list[str]  # the instruments it's made from, by short name
+    bars: list[BarOut]
+
+
+class BarsResponse(BaseModel):
+    interval: Interval
+    block: str  # "2026-10" (day), "2026" (week), "2020" (month, quarter, year: a decade)
+    start: str  # the days the block covers (whole periods)
+    end: str
+    final: bool  # the block is over and settled: it won't change, and browsers keep it a day
+    series: list[BarSeriesOut]
 
 
 def _summary(i: Instrument) -> InstrumentSummary:
@@ -452,6 +481,87 @@ def daily_spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None =
     return CompactSpreadResponse(name=f"{lo.short_name} - {sh.short_name}", long=lo.short_name, short=sh.short_name,
                                  start=start.isoformat(), end=end.isoformat(), dates=dates,
                                  bps=[basis_points(a[d], b[d]) for d in dates])
+
+
+FINAL_CACHE = "private, max-age=86400"
+OPEN_CACHE = "private, max-age=300"
+
+
+@router.get("/bars", operation_id="getBars", response_model=BarsResponse)
+def get_bars(response: Response, sec: Sec, quo: Quo,
+             series: Annotated[list[str], Query(min_length=1, max_length=14)],
+             interval: Interval, block: str, source: str = ""):
+    """Bars for a chart: its series at one interval, one fixed block at a time (app/blocks.py).
+
+    A series is an instrument (`UST-10Y-CMT`: its yield in percent), `spread(LONG,SHORT)` or
+    `fly(WING,BODY,WING)` (basis points). Blocks are a month of days, a year of weeks or a decade of months,
+    so a request is a few dozen bars per series and the same block is always the same URL: a finished
+    block (`final`) is cached by the browser for a day. `source` (UST-PAR, H15-TCM) narrows yields to one
+    publisher. All arithmetic is Decimal; values are strings.
+    """
+    try:
+        b = blocks.block(interval, block)
+        specs = [blocks.parse(x) for x in series]
+    except blocks.BadRequest as e:
+        raise HTTPException(422, str(e)) from None
+    today = _today()
+    start, end = b.start.isoformat(), min(b.end, today).isoformat()
+    insts = [[_resolve(sec, n) for n in spec.names] for spec in specs]
+    final = blocks.is_final(b, today)
+    response.headers["Cache-Control"] = FINAL_CACHE if final else OPEN_CACHE
+    if b.start > today:
+        return BarsResponse(interval=interval, block=block, start=start, end=b.end.isoformat(), final=False,
+                            series=[_bar_series(spec, ii, []) for spec, ii in zip(specs, insts, strict=True)])
+
+    def unique(ids):
+        return list(dict.fromkeys(ids))
+
+    # Yields: quote-svc sums them up per period in its query (days come as they are).
+    yield_ids = unique(ii[0].sec_id for spec, ii in zip(specs, insts, strict=True) if spec.kind == "yield")
+    yield_bars: dict[int, list[BarOut]] = {}
+    if yield_ids and interval == "day":
+        for s in quo.series(yield_ids, start, end, source):
+            yield_bars[s.sec_id] = [BarOut(date=p.as_of, last_date=p.as_of, open=percent(p.value),
+                                           high=percent(p.value), low=percent(p.value), close=percent(p.value),
+                                           source=p.source, inputs=[]) for p in s.points]
+    elif yield_ids:
+        for s in quo.bars(yield_ids, start, end, interval, source):
+            yield_bars[s.sec_id] = [BarOut(date=x.start, last_date=x.last, open=percent(x.open), high=percent(x.high),
+                                           low=percent(x.low), close=percent(x.close), source=x.source, inputs=[])
+                                    for x in s.bars]
+
+    # Spreads and flies: every day both (or all three) have, in basis points, then summed up per period.
+    # A block bounds it: at most a decade of days per instrument.
+    derived_ids = unique(i.sec_id for spec, ii in zip(specs, insts, strict=True) if spec.kind != "yield" for i in ii)
+    daily: dict[int, dict[str, str]] = {}
+    if derived_ids:
+        daily = {s.sec_id: {p.as_of: p.value for p in s.points}
+                 for s in quo.series(derived_ids, start, end, source)}
+
+    out = []
+    for spec, ii in zip(specs, insts, strict=True):
+        if spec.kind == "yield":
+            out.append(_bar_series(spec, ii, yield_bars.get(ii[0].sec_id, [])))
+            continue
+        cols = [daily.get(i.sec_id, {}) for i in ii]
+        days = sorted(set.intersection(*(set(c) for c in cols)))
+        vals = [[Decimal(c[d]) for c in cols] for d in days]
+        if spec.kind == "spread":
+            bp = [(v[0] - v[1]) * 10000 for v in vals]
+        else:
+            bp = [(2 * v[1] - v[0] - v[2]) * 10000 for v in vals]
+        summed = bars([(d, x, None) for d, x in zip(days, bp, strict=True)], interval)
+        out.append(_bar_series(spec, ii, [
+            BarOut(date=x["date"], last_date=x["last"], open=_s(x["open"]), high=_s(x["high"]), low=_s(x["low"]),
+                   close=_s(x["close"]), source="", inputs=[percent(c[x["last"]]) for c in cols])
+            for x in summed]))
+    return BarsResponse(interval=interval, block=block, start=start, end=b.end.isoformat(), final=final, series=out)
+
+
+def _bar_series(spec: blocks.SeriesSpec, insts: list[Instrument], got: list[BarOut]) -> BarSeriesOut:
+    names = [i.short_name for i in insts]
+    return BarSeriesOut(key=blocks.key(spec.kind, names), label=blocks.label(spec.kind, names), unit=spec.unit,
+                        inputs=names if spec.kind != "yield" else [], bars=got)
 
 
 def upstream_error_handler(_request, exc: UpstreamError):

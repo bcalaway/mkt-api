@@ -13,6 +13,7 @@ JSON under `/api/` (`app/api.py`), read from secmaster-svc and quote-svc over gR
 | `GET /api/instruments` | every instrument, shortest tenor first |
 | `GET /api/instruments/{name}` | one by short name or alias: identifiers, notes, latest golden value |
 | `GET /api/search?q=` | instruments whose name, alias, identifier or description contains q |
+| `GET /api/bars?series=&series=&interval=&block=&source=` | the chart request: each series (`UST-10Y-CMT`, `spread(UST-10Y-CMT,UST-2Y-CMT)`, `fly(UST-2Y-CMT,UST-5Y-CMT,UST-10Y-CMT)`) as bars at one interval for one fixed block (a month of days `2026-10`, a year of weeks `2026`, a decade of months `2020`; `app/blocks.py`); finished blocks are `final` and cached by the browser for a day |
 | `GET /api/series?name=&name=&start=&end=&source=&interval=` | golden yields (or one source's) with the source of each; default a year, daily; `interval` week, month, quarter or year gives bars (open, high, low, close) |
 | `GET /api/curve?date=&compare=1W&compare=1M&compare=1Y` | the curve on a date (default latest) and before it, each on the last business day on or before its date |
 | `GET /api/series/daily?name=&start=&end=&source=` | every day since 1962 (default) in columns: dates, percents, source runs, for a chart that loads once and zooms locally |
