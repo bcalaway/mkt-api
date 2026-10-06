@@ -1,6 +1,8 @@
 """Stand-ins for secmaster-svc and quote-svc (app/upstream.py)."""
 
-from app.upstream import Identifier, Instrument, Latest, Note, NotFound, Point, Series
+from decimal import Decimal
+
+from app.upstream import Bar, Bars, Identifier, Instrument, Latest, Note, NotFound, Point, Series
 
 TWO = Instrument(2, "UST-2Y-CMT", "P2Y", "US Treasury 2-year constant maturity yield", type="cmt_yield",
                  currency="USD", country="US", curve="UST", calendar="SIFMA-US",
@@ -49,6 +51,18 @@ class FakeQuotes:
         self.calls.append(("series", tuple(sec_ids), start, end, source))
         return [Series(i, [Point(d, v, s) for d, (v, s) in sorted(QUOTES.get(i, {}).items()) if start <= d <= end])
                 for i in sec_ids]
+
+    def bars(self, sec_ids, start, end, interval, source=""):
+        """As quote-svc's GetBars does it, using the same period rules as mkt-api's own (spread) bars."""
+        from app.api import bars
+
+        self.calls.append(("bars", tuple(sec_ids), start, end, interval, source))
+        out = []
+        for i in sec_ids:
+            daily = [(d, Decimal(v), s) for d, (v, s) in sorted(QUOTES.get(i, {}).items()) if start <= d <= end]
+            out.append(Bars(i, [Bar(b["date"], b["last"], str(b["open"]), str(b["high"]), str(b["low"]),
+                                    str(b["close"]), b["extra"]) for b in bars(daily, interval)]))
+        return out
 
     def latest(self, sec_ids):
         out = []

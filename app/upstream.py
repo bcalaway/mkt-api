@@ -82,6 +82,23 @@ class Series:
 
 
 @dataclass(frozen=True)
+class Bar:
+    start: str  # the period's first calendar day
+    last: str  # the close's date
+    open: str  # decimal strings, rates as decimals
+    high: str
+    low: str
+    close: str
+    source: str  # the close's
+
+
+@dataclass(frozen=True)
+class Bars:
+    sec_id: int
+    bars: list[Bar] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class Latest:
     sec_id: int
     as_of: str
@@ -97,6 +114,7 @@ class Securities(Protocol):
 
 class Quotes(Protocol):
     def series(self, sec_ids: list[int], start: str, end: str, source: str = "") -> list[Series]: ...
+    def bars(self, sec_ids: list[int], start: str, end: str, interval: str, source: str = "") -> list[Bars]: ...
     def latest(self, sec_ids: list[int]) -> list[Latest]: ...
 
 
@@ -172,6 +190,14 @@ class GrpcQuotes(_Grpc):
         r = self._call(self._stub, "GetSeries", pb.GetSeriesRequest(
             sec_ids=sec_ids, start=start, end=end, field="yield", source=source))
         return [Series(s.sec_id, [Point(p.as_of, p.value, p.source) for p in s.points]) for s in r.series]
+
+    def bars(self, sec_ids: list[int], start: str, end: str, interval: str, source: str = "") -> list[Bars]:
+        from app.grpc_gen import quotes_pb2 as pb
+
+        r = self._call(self._stub, "GetBars", pb.GetBarsRequest(
+            sec_ids=sec_ids, start=start, end=end, interval=interval, field="yield", source=source))
+        return [Bars(s.sec_id, [Bar(b.start, b.last, b.open, b.high, b.low, b.close, b.source) for b in s.bars])
+                for s in r.series]
 
     def latest(self, sec_ids: list[int]) -> list[Latest]:
         from app.grpc_gen import quotes_pb2 as pb

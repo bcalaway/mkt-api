@@ -336,13 +336,21 @@ def series(sec: Sec, quo: Quo, name: Annotated[list[str], Query(min_length=1, ma
     if start > end:
         raise HTTPException(422, f"start {start} is after end {end}")
     found = [_resolve(sec, n) for n in name]
-    got = {s.sec_id: s for s in quo.series([i.sec_id for i in found], start.isoformat(), end.isoformat(), source)}
+    ids = [i.sec_id for i in found]
+    if interval == "day":
+        got = {s.sec_id: [PointOut(date=p.as_of, last_date=p.as_of, value=p.value, percent=percent(p.value),
+                                   open_percent=percent(p.value), high_percent=percent(p.value),
+                                   low_percent=percent(p.value), source=p.source) for p in s.points]
+               for s in quo.series(ids, start.isoformat(), end.isoformat(), source)}
+    else:
+        # quote-svc sums the bars up in its query: one bar per period crosses the network, not every day.
+        got = {s.sec_id: [PointOut(date=b.start, last_date=b.last, value=b.close, percent=percent(b.close),
+                                   open_percent=percent(b.open), high_percent=percent(b.high),
+                                   low_percent=percent(b.low), source=b.source) for b in s.bars]
+               for s in quo.bars(ids, start.isoformat(), end.isoformat(), interval, source)}
+
     def points(sec_id: int) -> list[PointOut]:
-        daily = [(p.as_of, Decimal(p.value), p.source) for p in (got[sec_id].points if sec_id in got else [])]
-        return [PointOut(date=b["date"], last_date=b["last"], value=_s(b["close"]), percent=percent(_s(b["close"])),
-                         open_percent=percent(_s(b["open"])), high_percent=percent(_s(b["high"])),
-                         low_percent=percent(_s(b["low"])), source=b["extra"])
-                for b in bars(daily, interval)]
+        return got.get(sec_id, [])
 
     return SeriesResponse(start=start.isoformat(), end=end.isoformat(), interval=interval, series=[
         SeriesOut(name=i.short_name, tenor=i.tenor, points=points(i.sec_id)) for i in found
