@@ -355,6 +355,58 @@
         "title": "CurveResponse",
         "type": "object"
       },
+      "EventOut": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "key",
+          "title",
+          "text",
+          "series"
+        ],
+        "title": "EventOut",
+        "type": "object"
+      },
+      "EventsResponse": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "EventsResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1011,6 +1063,51 @@
           }
         },
         "summary": "Curve"
+      }
+    },
+    "/api/events": {
+      "get": {
+        "description": "What a chart of these series should mark: the security master's notes on their instruments (first\npublished, where H.15 starts, gaps, method changes), over all of history. A note on several instruments\n(the 2021 method change is on every CMT) comes once, naming them all. Series as for /api/bars.",
+        "operationId": "getEvents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "series",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 14,
+              "minItems": 1,
+              "title": "Series",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Events"
       }
     },
     "/api/instruments": {
