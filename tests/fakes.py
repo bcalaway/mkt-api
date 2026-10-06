@@ -6,7 +6,9 @@ from app.upstream import Bar, Bars, Identifier, Instrument, Latest, Note, NotFou
 
 TWO = Instrument(2, "UST-2Y-CMT", "P2Y", "US Treasury 2-year constant maturity yield", type="cmt_yield",
                  currency="USD", country="US", curve="UST", calendar="SIFMA-US",
-                 identifiers=(Identifier("UST-PAR", "BC_2YEAR"), Identifier("H15-TCM", "RIFLGFCY02_N.B")))
+                 identifiers=(Identifier("UST-PAR", "BC_2YEAR"), Identifier("H15-TCM", "RIFLGFCY02_N.B")),
+                 notes=(Note("h15-first", "1976-06-01", "H.15 starts."), Note("par-curve-method-2021", "2021-12-06",
+                                                                               "Method changed.")))
 TEN = Instrument(10, "UST-10Y-CMT", "P10Y", "US Treasury 10-year constant maturity yield", type="cmt_yield",
                  currency="USD", country="US", curve="UST", calendar="SIFMA-US",
                  identifiers=(Identifier("UST-PAR", "BC_10YEAR"), Identifier("H15-TCM", "RIFLGFCY10_N.B")),

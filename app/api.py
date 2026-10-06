@@ -483,6 +483,70 @@ def daily_spread(sec: Sec, quo: Quo, long: str, short: str, start: date | None =
                                  bps=[basis_points(a[d], b[d]) for d in dates])
 
 
+class EventOut(BaseModel):
+    date: str
+    key: str  # the note's key in secmaster-svc ("gap-2002-2006")
+    title: str  # a short label for a chart marker: "Gap", "Method change"
+    text: str  # the note, in full
+    series: list[str]  # the instruments it's about, by short name (one note can apply to several)
+
+
+class EventsResponse(BaseModel):
+    events: list[EventOut]  # in date order
+
+
+# Short marker labels for secmaster-svc's note keys (by prefix); anything else shows its key.
+EVENT_TITLES = [
+    ("first-published", "First published"),
+    ("h15-first", "H.15 starts"),
+    ("gap-", "Gap"),
+    ("par-curve-method", "Method change"),
+    ("composite-before", "20Y reissued"),
+]
+DETAIL_CACHE_SECONDS = INSTRUMENTS_CACHE_SECONDS
+_detail_cache: dict = {}
+
+
+def event_title(key: str) -> str:
+    for prefix, title in EVENT_TITLES:
+        if key.startswith(prefix):
+            return title
+    return key.replace("-", " ").capitalize()
+
+
+def _detail(sec: Securities, i: Instrument) -> Instrument:
+    """An instrument with its notes (the list leaves them out), cached like the list."""
+    if i.notes or i.identifiers:
+        return i
+    hit = _detail_cache.get(i.short_name)
+    if hit and time.monotonic() - hit[0] < DETAIL_CACHE_SECONDS:
+        return hit[1]
+    out = sec.get_instrument(i.short_name)
+    _detail_cache[i.short_name] = (time.monotonic(), out)
+    return out
+
+
+@router.get("/events", operation_id="getEvents", response_model=EventsResponse)
+def get_events(sec: Sec, series: Annotated[list[str], Query(min_length=1, max_length=14)]):
+    """What a chart of these series should mark: the security master's notes on their instruments (first
+    published, where H.15 starts, gaps, method changes), over all of history. A note on several instruments
+    (the 2021 method change is on every CMT) comes once, naming them all. Series as for /api/bars.
+    """
+    try:
+        specs = [blocks.parse(x) for x in series]
+    except blocks.BadRequest as e:
+        raise HTTPException(422, str(e)) from None
+    insts = list({i.short_name: i for spec in specs for i in (_resolve(sec, n) for n in spec.names)}.values())
+    merged: dict[tuple[str, str, str], list[str]] = {}
+    for i in insts:
+        for n in _detail(sec, i).notes:
+            merged.setdefault((n.date, n.key, n.text), []).append(i.short_name)
+    return EventsResponse(events=[
+        EventOut(date=d, key=k, title=event_title(k), text=t, series=names)
+        for (d, k, t), names in sorted(merged.items(), key=lambda x: (x[0][0], x[0][1]))
+    ])
+
+
 FINAL_CACHE = "private, max-age=86400"
 OPEN_CACHE = "private, max-age=300"
 

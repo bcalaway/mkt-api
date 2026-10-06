@@ -22,6 +22,7 @@ def fakes(monkeypatch):
     app.dependency_overrides[api.securities] = lambda: sec
     app.dependency_overrides[api.quotes] = lambda: quo
     api._instruments_cache.clear()
+    api._detail_cache.clear()
     monkeypatch.setattr(api, "_today", lambda: date(2026, 10, 3))  # a Saturday
     yield sec, quo
     app.dependency_overrides.clear()
@@ -258,3 +259,16 @@ def test_bars_rejects_bad_requests():
     assert client.get("/api/bars", params={"series": "spread(UST-10Y-CMT)", "interval": "day",
                                            "block": "2026"}).status_code == 422
     assert client.get("/api/bars", params={"series": "NOPE", "interval": "day", "block": "2026"}).status_code == 404
+
+
+def test_events_from_notes():
+    out = client.get("/api/events", params={"series": ["UST-2Y-CMT", "spread(UST-10Y-CMT,UST-2Y-CMT)"]}).json()
+    # The method change is on both: it comes once, naming both.
+    assert out["events"] == [
+        {"date": "1976-06-01", "key": "h15-first", "title": "H.15 starts", "text": "H.15 starts.",
+         "series": ["UST-2Y-CMT"]},
+        {"date": "2021-12-06", "key": "par-curve-method-2021", "title": "Method change", "text": "Method changed.",
+         "series": ["UST-2Y-CMT", "UST-10Y-CMT"]},
+    ]
+    assert client.get("/api/events", params={"series": "NOPE"}).status_code == 404
+    assert api.event_title("gap-2002-2006") == "Gap" and api.event_title("odd-one") == "Odd one"
