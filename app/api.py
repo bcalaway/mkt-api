@@ -1,10 +1,12 @@
 """The JSON API mkt-ui's server calls (mkt-data's docs/phase-2.md, Part B step 9).
 
 Every answer names instruments by short name (`UST-10Y-CMT`), never by
-secmaster-svc's internal sec_id. Values stay decimal strings end to end:
-`value` is the rate as a decimal ("0.041"), `percent` the same in percent
-("4.10"), spreads in basis points ("52"), all computed with Decimal here so
-the UI never does arithmetic on floats it shows back.
+secmaster-svc's internal sec_id. Values stay decimal strings end to end and
+are always decimals, as stored below (a rate of 4.10% is "0.041", a spread of
+52 bp is "0.0052"; Bill, 2026-10-06). Each comes with a `display` string in
+the series' unit (percent "4.10" for a yield, basis points "52" for a
+spread), made here with Decimal so the UI shows it as given and never does
+arithmetic on what it shows.
 
 The schema (`openapi.json`, committed; tests check it's current) is what
 mkt-ui's typed client is generated from: a change here is an API change, so
@@ -72,6 +74,16 @@ def _today() -> date:
 
 
 # --- Values ---
+
+
+def bp(value: Decimal | str) -> str:
+    """A decimal spread in basis points, exactly: "0.0052" -> "52", "-0.00025" -> "-2.5"."""
+    return _s(Decimal(value) * 10000)
+
+
+def display(value: Decimal | str, unit: str) -> str:
+    """A decimal in its unit's display form: percent ("4.10") or basis points ("52")."""
+    return percent(str(value)) if unit == "%" else bp(value)
 
 
 def percent(value: str) -> str:
@@ -164,8 +176,8 @@ class NoteOut(BaseModel):
 
 class LatestOut(BaseModel):
     date: str
-    value: str
-    percent: str
+    value: str  # the rate as a decimal: "0.041"
+    display: str  # in percent: "4.10"
     source: str
 
 
@@ -183,8 +195,8 @@ class InstrumentDetail(InstrumentSummary):
 class CurvePointOut(BaseModel):
     name: str
     tenor: str
-    value: str
-    percent: str
+    value: str  # the rate as a decimal: "0.041"
+    display: str  # in percent: "4.10"
     source: str
 
 
@@ -203,18 +215,23 @@ class CurveResponse(BaseModel):
 class BarOut(BaseModel):
     date: str  # the period's first calendar day (for a day, the day)
     last_date: str  # the day the close is from
-    open: str  # in the series' unit: percent for a yield, basis points for a spread or fly
+    open: str  # decimals: a yield's rate ("0.041"), a spread's or fly's difference of rates ("0.0052")
     high: str
     low: str
     close: str
+    open_display: str  # the same in the series' unit: percent for a yield ("4.10"), bp for a spread or fly ("52")
+    high_display: str
+    low_display: str
+    close_display: str
     source: str  # a yield's close: UST-PAR or H15-TCM; "" for a spread or fly
-    inputs: list[str]  # a spread's or fly's instruments' yields in percent on last_date, in order; [] for a yield
+    inputs: list[str]  # a spread's or fly's instruments' rates (decimals) on last_date, in order; [] for a yield
+    inputs_display: list[str]  # the same in percent
 
 
 class BarSeriesOut(BaseModel):
     key: str  # the series as asked for, with short names: "UST-10Y-CMT", "spread(UST-10Y-CMT,UST-2Y-CMT)"
     label: str  # "UST-10Y-CMT - UST-2Y-CMT"
-    unit: Literal["%", "bp"]
+    unit: Literal["%", "bp"]  # what the *_display fields are in
     inputs: list[str]  # the instruments it's made from, by short name
     bars: list[BarOut]
 
@@ -253,7 +270,7 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
     if not i.identifiers and not i.notes:
         i = sec.get_instrument(i.short_name)  # the list leaves identifiers and notes out
     got = [x for x in quo.latest([i.sec_id]) if x.value]
-    latest = LatestOut(date=got[0].as_of, value=got[0].value, percent=percent(got[0].value),
+    latest = LatestOut(date=got[0].as_of, value=got[0].value, display=percent(got[0].value),
                        source=got[0].source) if got else None
     return InstrumentDetail(
         **_summary(i).model_dump(), type=i.type, currency=i.currency, country=i.country, curve=i.curve,
@@ -295,7 +312,7 @@ def curve(sec: Sec, quo: Quo, date_: Annotated[date | None, Query(alias="date")]
                 missing.append(i.short_name)
             else:
                 points.append(CurvePointOut(name=i.short_name, tenor=i.tenor, value=p.value,
-                                            percent=percent(p.value), source=p.source))
+                                            display=percent(p.value), source=p.source))
         curves.append(CurveOut(label=label, requested=day.isoformat(), date=found, points=points, missing=missing))
     return CurveResponse(curves=curves)
 
@@ -374,8 +391,9 @@ def get_bars(response: Response, sec: Sec, quo: Quo,
              interval: Interval, block: str, source: str = ""):
     """Bars for a chart: its series at one interval, one fixed block at a time (app/blocks.py).
 
-    A series is an instrument (`UST-10Y-CMT`: its yield in percent), `spread(LONG,SHORT)` or
-    `fly(WING,BODY,WING)` (basis points). Blocks are a year of days or a decade of weeks or months, so a
+    A series is an instrument (`UST-10Y-CMT`: its yield), `spread(LONG,SHORT)` (long minus short) or
+    `fly(WING,BODY,WING)` (2 x body minus both wings). Values are decimals ("0.041", "0.0052"), each with a
+    `_display` form in the series' `unit` (percent for a yield, basis points for a spread or fly). Blocks are a year of days or a decade of weeks or months, so a
     screenful is a handful of requests and the same block is always the same URL: a finished
     block (`final`) is cached by the browser for a day. `source` (UST-PAR, H15-TCM) narrows yields to one
     publisher. All arithmetic is Decimal; values are strings.
@@ -402,16 +420,14 @@ def get_bars(response: Response, sec: Sec, quo: Quo,
     yield_bars: dict[int, list[BarOut]] = {}
     if yield_ids and interval == "day":
         for s in quo.series(yield_ids, start, end, source):
-            yield_bars[s.sec_id] = [BarOut(date=p.as_of, last_date=p.as_of, open=percent(p.value),
-                                           high=percent(p.value), low=percent(p.value), close=percent(p.value),
-                                           source=p.source, inputs=[]) for p in s.points]
+            yield_bars[s.sec_id] = [_bar(p.as_of, p.as_of, p.value, p.value, p.value, p.value, "%", p.source)
+                                    for p in s.points]
     elif yield_ids:
         for s in quo.bars(yield_ids, start, end, interval, source):
-            yield_bars[s.sec_id] = [BarOut(date=x.start, last_date=x.last, open=percent(x.open), high=percent(x.high),
-                                           low=percent(x.low), close=percent(x.close), source=x.source, inputs=[])
+            yield_bars[s.sec_id] = [_bar(x.start, x.last, x.open, x.high, x.low, x.close, "%", x.source)
                                     for x in s.bars]
 
-    # Spreads and flies: every day both (or all three) have, in basis points, then summed up per period.
+    # Spreads and flies: every day both (or all three) have, as decimals, then summed up per period.
     # A block bounds it: at most a decade of days per instrument.
     derived_ids = unique(i.sec_id for spec, ii in zip(specs, insts, strict=True) if spec.kind != "yield" for i in ii)
     daily: dict[int, dict[str, str]] = {}
@@ -428,15 +444,23 @@ def get_bars(response: Response, sec: Sec, quo: Quo,
         days = sorted(set.intersection(*(set(c) for c in cols)))
         vals = [[Decimal(c[d]) for c in cols] for d in days]
         if spec.kind == "spread":
-            bp = [(v[0] - v[1]) * 10000 for v in vals]
+            diff = [v[0] - v[1] for v in vals]
         else:
-            bp = [(2 * v[1] - v[0] - v[2]) * 10000 for v in vals]
-        summed = bars([(d, x, None) for d, x in zip(days, bp, strict=True)], interval)
+            diff = [2 * v[1] - v[0] - v[2] for v in vals]
+        summed = bars([(d, x, None) for d, x in zip(days, diff, strict=True)], interval)
         out.append(_bar_series(spec, ii, [
-            BarOut(date=x["date"], last_date=x["last"], open=_s(x["open"]), high=_s(x["high"]), low=_s(x["low"]),
-                   close=_s(x["close"]), source="", inputs=[percent(c[x["last"]]) for c in cols])
+            _bar(x["date"], x["last"], x["open"], x["high"], x["low"], x["close"], "bp", "",
+                 [c[x["last"]] for c in cols])
             for x in summed]))
     return BarsResponse(interval=interval, block=block, start=start, end=b.end.isoformat(), final=final, series=out)
+
+
+def _bar(start: str, last: str, o, h, lo, c, unit: str, source: str, inputs: list[str] | None = None) -> BarOut:
+    """A bar of decimals (strings from quote-svc, or Decimals summed up here) with their display forms."""
+    return BarOut(date=start, last_date=last, open=_s(Decimal(o)), high=_s(Decimal(h)), low=_s(Decimal(lo)),
+                  close=_s(Decimal(c)), open_display=display(o, unit), high_display=display(h, unit),
+                  low_display=display(lo, unit), close_display=display(c, unit), source=source,
+                  inputs=[_s(Decimal(x)) for x in inputs or []], inputs_display=[percent(x) for x in inputs or []])
 
 
 def _bar_series(spec: blocks.SeriesSpec, insts: list[Instrument], got: list[BarOut]) -> BarSeriesOut:

@@ -7,6 +7,10 @@
             "title": "Close",
             "type": "string"
           },
+          "close_display": {
+            "title": "Close Display",
+            "type": "string"
+          },
           "date": {
             "title": "Date",
             "type": "string"
@@ -15,11 +19,22 @@
             "title": "High",
             "type": "string"
           },
+          "high_display": {
+            "title": "High Display",
+            "type": "string"
+          },
           "inputs": {
             "items": {
               "type": "string"
             },
             "title": "Inputs",
+            "type": "array"
+          },
+          "inputs_display": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs Display",
             "type": "array"
           },
           "last_date": {
@@ -30,8 +45,16 @@
             "title": "Low",
             "type": "string"
           },
+          "low_display": {
+            "title": "Low Display",
+            "type": "string"
+          },
           "open": {
             "title": "Open",
+            "type": "string"
+          },
+          "open_display": {
+            "title": "Open Display",
             "type": "string"
           },
           "source": {
@@ -46,8 +69,13 @@
           "high",
           "low",
           "close",
+          "open_display",
+          "high_display",
+          "low_display",
+          "close_display",
           "source",
-          "inputs"
+          "inputs",
+          "inputs_display"
         ],
         "title": "BarOut",
         "type": "object"
@@ -191,12 +219,12 @@
       },
       "CurvePointOut": {
         "properties": {
-          "name": {
-            "title": "Name",
+          "display": {
+            "title": "Display",
             "type": "string"
           },
-          "percent": {
-            "title": "Percent",
+          "name": {
+            "title": "Name",
             "type": "string"
           },
           "source": {
@@ -216,7 +244,7 @@
           "name",
           "tenor",
           "value",
-          "percent",
+          "display",
           "source"
         ],
         "title": "CurvePointOut",
@@ -475,8 +503,8 @@
             "title": "Date",
             "type": "string"
           },
-          "percent": {
-            "title": "Percent",
+          "display": {
+            "title": "Display",
             "type": "string"
           },
           "source": {
@@ -491,7 +519,7 @@
         "required": [
           "date",
           "value",
-          "percent",
+          "display",
           "source"
         ],
         "title": "LatestOut",
@@ -571,7 +599,7 @@
   "paths": {
     "/api/bars": {
       "get": {
-        "description": "Bars for a chart: its series at one interval, one fixed block at a time (app/blocks.py).\n\nA series is an instrument (`UST-10Y-CMT`: its yield in percent), `spread(LONG,SHORT)` or\n`fly(WING,BODY,WING)` (basis points). Blocks are a year of days or a decade of weeks or months, so a\nscreenful is a handful of requests and the same block is always the same URL: a finished\nblock (`final`) is cached by the browser for a day. `source` (UST-PAR, H15-TCM) narrows yields to one\npublisher. All arithmetic is Decimal; values are strings.",
+        "description": "Bars for a chart: its series at one interval, one fixed block at a time (app/blocks.py).\n\nA series is an instrument (`UST-10Y-CMT`: its yield), `spread(LONG,SHORT)` (long minus short) or\n`fly(WING,BODY,WING)` (2 x body minus both wings). Values are decimals (\"0.041\", \"0.0052\"), each with a\n`_display` form in the series' `unit` (percent for a yield, basis points for a spread or fly). Blocks are a year of days or a decade of weeks or months, so a\nscreenful is a handful of requests and the same block is always the same URL: a finished\nblock (`final`) is cached by the browser for a day. `source` (UST-PAR, H15-TCM) narrows yields to one\npublisher. All arithmetic is Decimal; values are strings.",
         "operationId": "getBars",
         "parameters": [
           {
