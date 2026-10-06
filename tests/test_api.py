@@ -199,3 +199,16 @@ def test_events_from_notes():
     ]
     assert client.get("/api/events", params={"series": "NOPE"}).status_code == 404
     assert api.event_title("gap-2002-2006") == "Gap" and api.event_title("odd-one") == "Odd one"
+
+
+def test_swagger_ui_and_schema_under_api():
+    docs = client.get("/api/docs")
+    assert docs.status_code == 200 and "text/html" in docs.headers["content-type"] and "/api/openapi.json" in docs.text
+    assert client.get("/api/openapi.json").json()["paths"].keys() == schema_text_paths()
+    assert client.get("/docs").status_code == 404 and client.get("/openapi.json").status_code == 404
+
+
+def schema_text_paths():
+    import json
+
+    return json.loads(schema_text())["paths"].keys()
