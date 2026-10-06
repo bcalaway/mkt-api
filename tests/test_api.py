@@ -174,3 +174,9 @@ def test_daily_series_in_columns():
 def test_server_timing_header():
     r = client.get("/api/instruments")
     assert r.headers["server-timing"].startswith("api;dur=") and "upstream;dur=" in r.headers["server-timing"]
+
+
+def test_daily_spread_in_columns():
+    out = client.get("/api/spread/daily", params={"long": "UST-10Y-CMT", "short": "UST-2Y-CMT"}).json()
+    assert (out["name"], out["start"]) == ("UST-10Y-CMT - UST-2Y-CMT", "1962-01-01")
+    assert out["dates"] == ["2026-09-30", "2026-10-01", "2026-10-02"] and out["bps"] == ["54", "52", "52"]

@@ -69,6 +69,55 @@
         "title": "CompactSeriesResponse",
         "type": "object"
       },
+      "CompactSpreadResponse": {
+        "properties": {
+          "bps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bps",
+            "type": "array"
+          },
+          "dates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dates",
+            "type": "array"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "long": {
+            "title": "Long",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "short": {
+            "title": "Short",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "long",
+          "short",
+          "start",
+          "end",
+          "dates",
+          "bps"
+        ],
+        "title": "CompactSpreadResponse",
+        "type": "object"
+      },
       "CurveOut": {
         "properties": {
           "date": {
@@ -1156,6 +1205,89 @@
           }
         },
         "summary": "Spread"
+      }
+    },
+    "/api/spread/daily": {
+      "get": {
+        "description": "Every day's spread in basis points in a compact form (columns), default all of history, for a chart that\nloads once and zooms without asking again.",
+        "operationId": "getDailySpread",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "long",
+            "required": true,
+            "schema": {
+              "title": "Long",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "short",
+            "required": true,
+            "schema": {
+              "title": "Short",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactSpreadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Daily Spread"
       }
     }
   }
