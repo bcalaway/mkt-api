@@ -137,7 +137,7 @@ def test_period_starts():
     assert api.period_start(d, "year") == date(2026, 1, 1)
 
 
-def test_series_in_bars():
+def test_series_in_bars(fakes):
     out = client.get("/api/series", params={"name": "UST-10Y-CMT", "start": "2026-09-01", "end": "2026-10-31",
                                             "interval": "month"}).json()
     sep, oct_ = out["series"][0]["points"]
@@ -151,6 +151,9 @@ def test_series_in_bars():
                                              "interval": "week"}).json()["series"][0]["points"]
     assert [(p["date"], p["high_percent"], p["low_percent"]) for p in week] == [("2026-09-28", "4.15", "4.10")]
     assert client.get("/api/series", params={"name": "UST-10Y-CMT", "interval": "hour"}).status_code == 422
+    # The bars come from quote-svc's GetBars, not from every day.
+    _, quo = fakes
+    assert quo.calls[-1][0] == "bars" and quo.calls[-1][4] == "week"
 
 
 def test_spread_in_bars():

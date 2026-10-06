@@ -40,6 +40,12 @@ class Quotes(quotes_pb2_grpc.QuotesServicer):
             sec_id=i, short_name="x", points=[quotes_pb2.Point(as_of=request.start, value="0.041", source="H15-TCM")])
             for i in request.sec_ids])
 
+    def GetBars(self, request, context):
+        assert (request.interval, request.field) == ("month", "yield")
+        return quotes_pb2.GetBarsResponse(series=[quotes_pb2.BarSeries(sec_id=i, short_name="x", bars=[quotes_pb2.Bar(
+            start="2026-10-01", last="2026-10-02", open="0.0415", high="0.0415", low="0.041", close="0.041",
+            source="UST-PAR")]) for i in request.sec_ids])
+
     def GetLatest(self, request, context):
         return quotes_pb2.GetLatestResponse(latest=[quotes_pb2.Latest(
             sec_id=10, short_name="UST-10Y-CMT", as_of="2026-10-02", value="0.041", source="UST-PAR")])
@@ -72,6 +78,9 @@ def test_quotes(target):
     [s] = quo.series([10], "2026-10-01", "2026-10-02", "H15-TCM")
     assert (s.sec_id, s.points[0].as_of, s.points[0].value, s.points[0].source) == (
         10, "2026-10-01", "0.041", "H15-TCM")
+    [b] = quo.bars([10], "2026-10-01", "2026-10-31", "month")
+    assert (b.sec_id, b.bars[0].start, b.bars[0].open, b.bars[0].close, b.bars[0].last) == (
+        10, "2026-10-01", "0.0415", "0.041", "2026-10-02")
     [x] = quo.latest([10])
     assert (x.as_of, x.value) == ("2026-10-02", "0.041")
 
