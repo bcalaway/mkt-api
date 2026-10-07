@@ -48,8 +48,10 @@ def test_offset_dates():
 
 def test_instruments_by_short_name_without_sec_ids():
     out = client.get("/api/instruments").json()
-    assert [i["name"] for i in out] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT"]
-    assert "sec_id" not in str(out)
+    assert [i["name"] for i in out] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT", "UST-4.25-2035-08-15"]
+    assert "sec_id" not in str(out) and out[3]["type"] == "ust_note"
+    tenors = client.get("/api/instruments", params={"type": "cmt_yield"}).json()
+    assert [i["name"] for i in tenors] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT"]
 
 
 def test_an_instrument_by_alias_with_identifiers_notes_and_latest():
@@ -81,6 +83,14 @@ def test_curve_uses_the_last_business_day_on_or_before_each_date():
     assert client.get("/api/curve", params={"compare": "1Q"}).status_code == 422
     nothing = client.get("/api/curve", params={"date": "2020-01-01"}).json()["curves"][0]
     assert nothing["date"] is None and nothing["points"] == [] and len(nothing["missing"]) == 3
+
+
+def test_the_curve_asks_only_for_the_tenors(fakes):
+    # Thousands of active Treasury securities live beside the CMTs; asking quote-svc for all of them timed out.
+    _, quo = fakes
+    client.get("/api/curve")
+    asked = {i for call in quo.calls if call[0] == "series" for i in call[1]}
+    assert asked == {1, 2, 10}
 
 
 def test_an_upstream_failure_is_a_502(fakes):

@@ -485,6 +485,11 @@
           "tenor": {
             "title": "Tenor",
             "type": "string"
+          },
+          "type": {
+            "default": "",
+            "title": "Type",
+            "type": "string"
           }
         },
         "required": [
@@ -792,8 +797,27 @@
     },
     "/api/instruments": {
       "get": {
-        "description": "Every instrument, shortest tenor first.",
+        "description": "Every instrument, or those of one type (`cmt_yield` for the curve's tenors); shortest tenor first.\n\nThere are thousands of Treasury securities, so a screen that wants the tenors asks for `type=cmt_yield`.",
         "operationId": "listInstruments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -808,6 +832,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Instruments"

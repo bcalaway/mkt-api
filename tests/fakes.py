@@ -14,8 +14,11 @@ TEN = Instrument(10, "UST-10Y-CMT", "P10Y", "US Treasury 10-year constant maturi
                  identifiers=(Identifier("UST-PAR", "BC_10YEAR"), Identifier("H15-TCM", "RIFLGFCY10_N.B")),
                  notes=(Note("par-curve-method-2021", "2021-12-06", "Method changed."),))
 SIX_WEEK = Instrument(1, "UST-1.5M-CMT", "P6W", "US Treasury 1.5-month constant maturity yield",
-                      aliases=("UST-6W-CMT",))
-ALL = [SIX_WEEK, TWO, TEN]
+                      aliases=("UST-6W-CMT",), type="cmt_yield")
+# A Treasury security: priced, not on the curve.
+NOTE = Instrument(500, "UST-4.25-2035-08-15", "", "US Treasury note 4.25% due 2035-08-15", type="ust_note",
+                  aliases=("UST-10Y-OTR",))
+ALL = [SIX_WEEK, TWO, TEN, NOTE]
 
 # sec_id -> date -> (value, source)
 QUOTES = {
@@ -32,7 +35,7 @@ class FakeSecurities:
 
     def list_instruments(self):
         self.calls.append("list")
-        return [Instrument(i.sec_id, i.short_name, i.tenor, i.description, aliases=i.aliases) for i in ALL]
+        return [Instrument(i.sec_id, i.short_name, i.tenor, i.description, aliases=i.aliases, type=i.type) for i in ALL]
 
     def get_instrument(self, name):
         self.calls.append(("get", name))
