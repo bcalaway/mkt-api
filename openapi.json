@@ -107,7 +107,8 @@
           "unit": {
             "enum": [
               "%",
-              "bp"
+              "bp",
+              "price"
             ],
             "title": "Unit",
             "type": "string"
@@ -553,6 +554,312 @@
         "title": "NoteOut",
         "type": "object"
       },
+      "OnTheRunOut": {
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "alias",
+          "since",
+          "until"
+        ],
+        "title": "OnTheRunOut",
+        "type": "object"
+      },
+      "PriceOut": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "value",
+          "display",
+          "source"
+        ],
+        "title": "PriceOut",
+        "type": "object"
+      },
+      "SecurityDetail": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "auctions": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Auctions",
+            "type": "array"
+          },
+          "checks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierOut"
+            },
+            "title": "Identifiers",
+            "type": "array"
+          },
+          "index_ratio": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Ratio"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "on_the_run": {
+            "items": {
+              "$ref": "#/components/schemas/OnTheRunOut"
+            },
+            "title": "On The Run",
+            "type": "array"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Provenance",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "strip": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strip"
+          },
+          "terms": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "object"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "aliases",
+          "description",
+          "status",
+          "type",
+          "identifiers",
+          "terms",
+          "provenance",
+          "checks",
+          "auctions",
+          "on_the_run",
+          "index_ratio",
+          "strip",
+          "price"
+        ],
+        "title": "SecurityDetail",
+        "type": "object"
+      },
+      "SecurityListResponse": {
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "securities": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityRow"
+            },
+            "title": "Securities",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "as_of",
+          "total",
+          "securities"
+        ],
+        "title": "SecurityListResponse",
+        "type": "object"
+      },
+      "SecurityRow": {
+        "properties": {
+          "cmb": {
+            "title": "Cmb",
+            "type": "boolean"
+          },
+          "coupon": {
+            "title": "Coupon",
+            "type": "string"
+          },
+          "coupon_display": {
+            "title": "Coupon Display",
+            "type": "string"
+          },
+          "cusip": {
+            "title": "Cusip",
+            "type": "string"
+          },
+          "frn_spread": {
+            "title": "Frn Spread",
+            "type": "string"
+          },
+          "issue_date": {
+            "title": "Issue Date",
+            "type": "string"
+          },
+          "maturity_date": {
+            "title": "Maturity Date",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "on_the_run": {
+            "items": {
+              "type": "string"
+            },
+            "title": "On The Run",
+            "type": "array"
+          },
+          "original_term": {
+            "title": "Original Term",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "bill",
+              "note",
+              "bond",
+              "tips",
+              "frn"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "cusip",
+          "type",
+          "cmb",
+          "term",
+          "original_term",
+          "coupon",
+          "coupon_display",
+          "frn_spread",
+          "issue_date",
+          "maturity_date",
+          "status",
+          "on_the_run",
+          "price"
+        ],
+        "title": "SecurityRow",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -943,6 +1250,156 @@
           }
         },
         "summary": "Search"
+      }
+    },
+    "/api/securities": {
+      "get": {
+        "description": "Treasury securities by maturity: outstanding ones, or all since 1980 with `include_inactive`.\n\nWith their CUSIP, coupon, dates, on-the-run aliases (today) and, for outstanding ones, the latest\nFedInvest end-of-day price.",
+        "operationId": "listSecurities",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "bill",
+                    "note",
+                    "bond",
+                    "tips",
+                    "frn"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_inactive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Inactive",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maturing_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maturing From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maturing_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maturing To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 6000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Securities"
+      }
+    },
+    "/api/securities/{name}": {
+      "get": {
+        "description": "One Treasury security by short name, alias, CUSIP or on-the-run name: terms with where each came from,\nevery auction, identifiers, on-the-run aliases, a TIPS's index ratio today, and the latest price.",
+        "operationId": "getSecurity",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Security"
       }
     }
   }
