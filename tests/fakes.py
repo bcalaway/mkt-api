@@ -8,6 +8,7 @@ from app.upstream import (
     Bars,
     CalendarInfo,
     CalendarSource,
+    CaptureText,
     Close,
     DayAnswer,
     DayVersion,
@@ -16,6 +17,7 @@ from app.upstream import (
     Instrument,
     Latest,
     Note,
+    NoText,
     NotFound,
     OnTheRun,
     OutOfRange,
@@ -148,11 +150,13 @@ PRICES_SRC = SourceState("TD-PRICES", "securities", "SIFMA-US", "published", "da
                          latest_capture_at="2026-10-07T23:16:00+00:00", last_success_at="2026-10-06T23:16:00+00:00",
                          last_check_at="2026-10-07T23:16:00+00:00", last_outcome="error",
                          last_error="HTTP 503 from FedInvest", checks_7d=40, errors_7d=1, periods=4700,
-                         first_period="2008-01-02", last_period="2026-10-07")
+                         first_period="2008-01-02", last_period="2026-10-07", pulls="FedInvest's prices. quote-svc reads them.",
+                         dag="mkt_data__treasury_securities_capture", schedule="Weekdays 7:15 p.m. New York",
+                         late_after_hours=96)
 FED_SRC = SourceState("FED-K8", "calendars", "FED", "published", "", "https://www.federalreserve.gov/", "K.8", True,
                       captures=12, capture_bytes=600_000, latest_capture_id=40, latest_capture_at="2026-10-01T00:00:00+00:00",
                       last_success_at="2026-10-07T00:00:00+00:00", last_check_at="2026-10-07T00:00:00+00:00",
-                      last_outcome="unchanged", last_parse_outcome="ok", checks_7d=1)
+                      last_outcome="unchanged", last_parse_outcome="ok", checks_7d=1, late_after_hours=192, late=True)
 NEVER_SRC = SourceState("NYSE-RULES", "calendars", "NYSE", "rules", "", "", "rules", False)
 
 
@@ -171,6 +175,16 @@ class FakeSources:
             SourceCheck(9, "2026-10-07T23:16:00+00:00", "error", 0, "2026-10-07", "HTTP 503 from FedInvest"),
             SourceCheck(8, "2026-10-06T23:16:00+00:00", "new", 8099, "2026-10-06", "", "ok")],
             [PeriodYear("2025", 250, 252, 27_000_000), PeriodYear("2026", 190, 200, 21_000_000)])
+
+    def capture_text(self, capture_id, contains="", context=0, offset=0, limit=200):
+        self.calls.append(("text", capture_id, contains, context, offset, limit))
+        if capture_id == 1:
+            raise NoText("capture 1 is application/pdf; no text view")
+        if capture_id != 8099:
+            raise NotFound(str(capture_id))
+        return CaptureText(8099, "TD-PRICES", "2026-10-06", "2026-10-06T23:16:00+00:00", "visible", 3020,
+                           1 if contains else -1, offset, 3020, [(48, "Prices For: October 6, 2026")])
+
 
 
 # Two calendars from 2026-10-03 (the tests' today, a Saturday): Columbus Day closes SIFMA-US but not FED... and both

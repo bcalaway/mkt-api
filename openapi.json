@@ -476,6 +476,74 @@
         "title": "CalendarsResponse",
         "type": "object"
       },
+      "CaptureTextOut": {
+        "properties": {
+          "capture_id": {
+            "title": "Capture Id",
+            "type": "integer"
+          },
+          "fetched_at": {
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/TextLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "lines_total": {
+            "title": "Lines Total",
+            "type": "integer"
+          },
+          "matches": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matches"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "shown_of": {
+            "title": "Shown Of",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capture_id",
+          "source",
+          "period",
+          "fetched_at",
+          "view",
+          "lines_total",
+          "matches",
+          "offset",
+          "shown_of",
+          "lines"
+        ],
+        "title": "CaptureTextOut",
+        "type": "object"
+      },
       "CloseOut": {
         "properties": {
           "close_time": {
@@ -1564,6 +1632,10 @@
             "title": "Checks 7D",
             "type": "integer"
           },
+          "dag": {
+            "title": "Dag",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -1608,6 +1680,14 @@
             "title": "Last Success At",
             "type": "string"
           },
+          "late": {
+            "title": "Late",
+            "type": "boolean"
+          },
+          "late_after_hours": {
+            "title": "Late After Hours",
+            "type": "integer"
+          },
           "latest_capture_at": {
             "title": "Latest Capture At",
             "type": "string"
@@ -1631,6 +1711,14 @@
           "periods": {
             "title": "Periods",
             "type": "integer"
+          },
+          "pulls": {
+            "title": "Pulls",
+            "type": "string"
+          },
+          "schedule": {
+            "title": "Schedule",
+            "type": "string"
           },
           "status": {
             "title": "Status",
@@ -1664,7 +1752,12 @@
           "errors_7d",
           "periods",
           "first_period",
-          "last_period"
+          "last_period",
+          "pulls",
+          "dag",
+          "schedule",
+          "late_after_hours",
+          "late"
         ],
         "title": "SourceOut",
         "type": "object"
@@ -1683,6 +1776,24 @@
           "sources"
         ],
         "title": "SourcesResponse",
+        "type": "object"
+      },
+      "TextLineOut": {
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n",
+          "text"
+        ],
+        "title": "TextLineOut",
         "type": "object"
       },
       "UpcomingDay": {
@@ -2223,6 +2334,92 @@
           }
         },
         "summary": "Calendar Year"
+      }
+    },
+    "/api/captures/{capture_id}/text": {
+      "get": {
+        "description": "A raw capture's text as mkt-data's parsers read it (never the publisher's page itself), a page at a time:\nan HTML page's visible text, JSON pretty-printed, CSV or XML line by line. `contains` keeps matching lines with\n`context` lines either side.",
+        "operationId": "getCaptureText",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_id",
+            "required": true,
+            "schema": {
+              "title": "Capture Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contains",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 100,
+              "title": "Contains",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "context",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10,
+              "minimum": 0,
+              "title": "Context",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureTextOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Capture Text"
       }
     },
     "/api/curve": {

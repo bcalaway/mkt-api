@@ -37,6 +37,10 @@ class NotFound(LookupError):
     pass
 
 
+class NoText(LookupError):
+    """A capture with no text view (a binary file: mkt-data's FAILED_PRECONDITION)."""
+
+
 class OutOfRange(LookupError):
     """A date in a year no source covers (calendar-svc's OUT_OF_RANGE)."""
 
@@ -193,6 +197,25 @@ class SourceState:
     periods: int = 0
     first_period: str = ""
     last_period: str = ""
+    pulls: str = ""  # what's taken from it and who reads it
+    dag: str = ""  # the Airflow DAG that fetches it
+    schedule: str = ""  # when that runs, in words
+    late_after_hours: int = 0
+    late: bool = False  # no successful fetch for longer than late_after_hours
+
+
+@dataclass(frozen=True)
+class CaptureText:
+    capture_id: int
+    source: str
+    period: str
+    fetched_at: str
+    view: str  # visible | json | text
+    lines_total: int
+    matches: int  # -1 without `contains`
+    offset: int
+    shown_of: int
+    lines: list[tuple[int, str]]
 
 
 @dataclass(frozen=True)
@@ -324,6 +347,8 @@ class Calendars(Protocol):
 class Sources(Protocol):
     def list_sources(self) -> list[SourceState]: ...
     def get_source(self, name: str, checks: int = 0) -> SourceDetail: ...  # NotFound
+    def capture_text(self, capture_id: int, contains: str = "", context: int = 0, offset: int = 0,
+                     limit: int = 200) -> CaptureText: ...  # NotFound, NoText
 
 
 def _instrument(m) -> Instrument:
@@ -351,6 +376,8 @@ class _Grpc:
                 raise NotFound(e.details()) from None
             if e.code() == grpc.StatusCode.OUT_OF_RANGE:
                 raise OutOfRange(e.details()) from None
+            if e.code() == grpc.StatusCode.FAILED_PRECONDITION:
+                raise NoText(e.details()) from None
             raise UpstreamError(f"{self.target} {method}: {e.code().name} {e.details() or ''}".strip()) from None
         finally:
             total = _upstream_ms.get()
@@ -473,6 +500,16 @@ class GrpcSources(_Grpc):
             source=_state(r.source),
             checks=[SourceCheck(**{f: getattr(c, f) for f in SourceCheck.__dataclass_fields__}) for c in r.checks],
             years=[PeriodYear(y.year, y.periods, y.captures, y.capture_bytes) for y in r.years])
+
+
+    def capture_text(self, capture_id: int, contains: str = "", context: int = 0, offset: int = 0,
+                     limit: int = 200) -> CaptureText:
+        from app.grpc_gen import source_status_pb2 as pb
+
+        r = self._call(self._stub, "GetCaptureText", pb.GetCaptureTextRequest(
+            capture_id=capture_id, contains=contains, context=context, offset=offset, limit=limit))
+        return CaptureText(r.capture_id, r.source, r.period, r.fetched_at, r.view, r.lines_total, r.matches, r.offset,
+                           r.shown_of, [(x.n, x.text) for x in r.lines])
 
 
 class GrpcCalendars(_Grpc):

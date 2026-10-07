@@ -282,7 +282,8 @@ def test_sources():
     src = FakeSources()
     app.dependency_overrides[api.sources] = lambda: src
     rows = {r["name"]: r for r in client.get("/api/sources").json()["sources"]}
-    assert {n: r["status"] for n, r in rows.items()} == {"FED-K8": "ok", "TD-PRICES": "error", "NYSE-RULES": "never"}
+    assert {n: r["status"] for n, r in rows.items()} == {"FED-K8": "late", "TD-PRICES": "error", "NYSE-RULES": "never"}
+    assert rows["TD-PRICES"]["dag"] == "mkt_data__treasury_securities_capture" and rows["TD-PRICES"]["pulls"]
     assert rows["TD-PRICES"]["last_error"] == "HTTP 503 from FedInvest" and rows["TD-PRICES"]["periods"] == 4700
     one = client.get("/api/sources/td-prices", params={"checks": 2}).json()
     assert src.calls == [("get", "TD-PRICES", 2)]
@@ -344,3 +345,15 @@ def test_a_calendars_sources_history_and_disagreements():
     assert year["closes"][0]["source"] == "SIFMA-US-HOLIDAYS"
     assert client.get("/api/calendars/NOPE/sources").status_code == 404
     assert client.get("/api/calendars/SIFMA-US/days/someday").status_code == 422
+
+
+def test_a_captures_text():
+    src = FakeSources()
+    app.dependency_overrides[api.sources] = lambda: src
+    out = client.get("/api/captures/8099/text").json()
+    assert (out["view"], out["matches"], out["lines"]) == ("visible", None, [{"n": 48, "text": "Prices For: October 6, 2026"}])
+    found = client.get("/api/captures/8099/text", params={"contains": "Prices", "context": 2, "offset": 0, "limit": 50}).json()
+    assert found["matches"] == 1 and src.calls[-1] == ("text", 8099, "Prices", 2, 0, 50)
+    assert client.get("/api/captures/2/text").status_code == 404
+    assert client.get("/api/captures/1/text").status_code == 415
+    assert client.get("/api/captures/8099/text", params={"limit": 5000}).status_code == 422

@@ -17,6 +17,11 @@ service SourceStatus {
   // One source: its status, its newest fetch attempts and reparses, and its
   // periods by year.
   rpc GetSourceStatus(GetSourceStatusRequest) returns (SourceStatusDetail);
+  // A capture's text as numbered lines (an HTML page's visible text, JSON
+  // pretty-printed, CSV or XML as is), a page at a time, optionally only the
+  // lines containing some text. NOT_FOUND: no such capture; FAILED_PRECONDITION:
+  // a binary file with no text view.
+  rpc GetCaptureText(GetCaptureTextRequest) returns (CaptureText);
 }
 
 message ListSourceStatusRequest {}
@@ -44,6 +49,11 @@ message SourceState {
   int32 periods = 20;             // distinct periods captured (0 for a one-page source)
   string first_period = 21;
   string last_period = 22;
+  string pulls = 23;              // what's taken from it and who reads it
+  string dag = 24;                // the Airflow DAG that fetches it
+  string schedule = 25;           // when that runs, in words
+  int32 late_after_hours = 26;    // no successful fetch for longer than this is late
+  bool late = 27;                 // the last successful fetch is older than that
 }
 
 message ListSourceStatusResponse {
@@ -77,4 +87,30 @@ message SourceStatusDetail {
   SourceState source = 1;
   repeated SourceCheckRow checks = 2;
   repeated PeriodYear years = 3;  // period sources only, oldest first
+}
+
+message GetCaptureTextRequest {
+  int64 capture_id = 1;
+  string contains = 2;   // only lines containing this (case-insensitive), with `context` lines either side
+  int32 context = 3;     // 0 to 10
+  int32 offset = 4;      // the first of the shown lines to return (paging)
+  int32 limit = 5;       // how many (default 200, at most 1000)
+}
+
+message TextLine {
+  int32 n = 1;           // its line number in the whole text
+  string text = 2;
+}
+
+message CaptureText {
+  int64 capture_id = 1;
+  string source = 2;
+  string period = 3;
+  string fetched_at = 4;
+  string view = 5;       // visible | json | text
+  int32 lines_total = 6;
+  int32 matches = 7;     // lines containing `contains`; -1 without it
+  int32 offset = 8;
+  int32 shown_of = 9;    // lines to page through (all, or the matches with context)
+  repeated TextLine lines = 10;
 }

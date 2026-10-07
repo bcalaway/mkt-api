@@ -33,6 +33,7 @@ from app.upstream import (
     GrpcSecurities,
     GrpcSources,
     Instrument,
+    NoText,
     NotFound,
     OutOfRange,
     Quotes,
@@ -573,7 +574,7 @@ class SourceOut(BaseModel):
     url: str
     description: str
     parsed: bool  # false: kept raw, no parser yet
-    status: str  # error (the last fetch or parse failed) | never (nothing captured) | raw (no parser) | ok
+    status: str  # error (the last fetch or parse failed) | never (nothing captured) | late (behind its schedule) | raw | ok
     captures: int
     capture_bytes: int
     latest_capture_id: int
@@ -588,6 +589,11 @@ class SourceOut(BaseModel):
     periods: int
     first_period: str
     last_period: str
+    pulls: str  # what's taken from it and who reads it
+    dag: str  # the Airflow DAG that fetches it
+    schedule: str  # when that runs, in words
+    late_after_hours: int
+    late: bool  # no successful fetch for longer than late_after_hours
 
 
 class SourcesResponse(BaseModel):
@@ -626,6 +632,8 @@ def source_status(x: SourceState) -> str:
         return "error"
     if not x.latest_capture_id:
         return "never"
+    if x.late:
+        return "late"
     return "ok" if x.parsed else "raw"
 
 
@@ -876,6 +884,42 @@ def calendar_year(name: str, year: Annotated[int, Path(ge=1800, le=2200)], cal: 
     closes = cal.closes(info.name, f"{year}-01-01", f"{year}-12-31")
     return CalendarYearOut(calendar=info.name, timezone=info.timezone, year=year, source=cover.source, kind=cover.kind,
                            closes=[_close(c) for c in closes])
+
+
+class TextLineOut(BaseModel):
+    n: int  # its line number in the whole text
+    text: str
+
+
+class CaptureTextOut(BaseModel):
+    capture_id: int
+    source: str
+    period: str
+    fetched_at: str
+    view: str  # visible (an HTML page's text) | json | text
+    lines_total: int
+    matches: int | None  # lines containing `contains`; null without it
+    offset: int
+    shown_of: int  # lines to page through
+    lines: list[TextLineOut]
+
+
+@router.get("/captures/{capture_id}/text", operation_id="getCaptureText", response_model=CaptureTextOut)
+def get_capture_text(capture_id: int, src: Src, contains: Annotated[str, Query(max_length=100)] = "",
+                     context: Annotated[int, Query(ge=0, le=10)] = 0, offset: Annotated[int, Query(ge=0)] = 0,
+                     limit: Annotated[int, Query(ge=1, le=1000)] = 200):
+    """A raw capture's text as mkt-data's parsers read it (never the publisher's page itself), a page at a time:
+    an HTML page's visible text, JSON pretty-printed, CSV or XML line by line. `contains` keeps matching lines with
+    `context` lines either side."""
+    try:
+        c = src.capture_text(capture_id, contains, context, offset, limit)
+    except NotFound:
+        raise HTTPException(404, f"no capture {capture_id}") from None
+    except NoText as e:
+        raise HTTPException(415, str(e)) from None
+    return CaptureTextOut(capture_id=c.capture_id, source=c.source, period=c.period, fetched_at=c.fetched_at,
+                          view=c.view, lines_total=c.lines_total, matches=None if c.matches < 0 else c.matches,
+                          offset=c.offset, shown_of=c.shown_of, lines=[TextLineOut(n=n, text=x) for n, x in c.lines])
 
 
 def event_title(key: str) -> str:
