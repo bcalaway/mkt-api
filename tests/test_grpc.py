@@ -73,6 +73,13 @@ PRICES = source_status_pb2.SourceState(name="TD-PRICES", group="securities", cal
 
 
 class SourceStatus(source_status_pb2_grpc.SourceStatusServicer):
+    def GetCaptureText(self, request, context):
+        if request.capture_id == 1:
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, "capture 1 is application/pdf; no text view")
+        return source_status_pb2.CaptureText(capture_id=request.capture_id, source="TD-PRICES", view="visible",
+                                             lines_total=3, matches=-1, shown_of=3,
+                                             lines=[source_status_pb2.TextLine(n=1, text="Security Prices")])
+
     def ListSourceStatus(self, request, context):
         return source_status_pb2.ListSourceStatusResponse(sources=[PRICES])
 
@@ -185,3 +192,13 @@ def test_calendars(target):
     assert cal.business_day("SIFMA-US", "2026-10-13").status == "open"
     with pytest.raises(OutOfRange):
         cal.business_day("SIFMA-US", "1980-01-02")
+
+
+def test_capture_text(target):
+    from app.upstream import NoText
+
+    src = GrpcSources(target)
+    got = src.capture_text(9, limit=10)
+    assert (got.view, got.matches, got.lines) == ("visible", -1, [(1, "Security Prices")])
+    with pytest.raises(NoText):
+        src.capture_text(1)
