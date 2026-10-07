@@ -1,6 +1,130 @@
 {
   "components": {
     "schemas": {
+      "AuctionOut": {
+        "properties": {
+          "announcement_date": {
+            "title": "Announcement Date",
+            "type": "string"
+          },
+          "auction_date": {
+            "title": "Auction Date",
+            "type": "string"
+          },
+          "bid_to_cover": {
+            "title": "Bid To Cover",
+            "type": "string"
+          },
+          "cusip": {
+            "title": "Cusip",
+            "type": "string"
+          },
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "high_discount_margin": {
+            "title": "High Discount Margin",
+            "type": "string"
+          },
+          "high_discount_rate": {
+            "title": "High Discount Rate",
+            "type": "string"
+          },
+          "high_discount_rate_display": {
+            "title": "High Discount Rate Display",
+            "type": "string"
+          },
+          "high_yield": {
+            "title": "High Yield",
+            "type": "string"
+          },
+          "high_yield_display": {
+            "title": "High Yield Display",
+            "type": "string"
+          },
+          "issue_date": {
+            "title": "Issue Date",
+            "type": "string"
+          },
+          "offering_amount": {
+            "title": "Offering Amount",
+            "type": "string"
+          },
+          "price_per_100": {
+            "title": "Price Per 100",
+            "type": "string"
+          },
+          "reopening": {
+            "title": "Reopening",
+            "type": "boolean"
+          },
+          "security": {
+            "title": "Security",
+            "type": "string"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "total_accepted": {
+            "title": "Total Accepted",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "security",
+          "cusip",
+          "type",
+          "term",
+          "reopening",
+          "announcement_date",
+          "auction_date",
+          "issue_date",
+          "offering_amount",
+          "held",
+          "total_accepted",
+          "bid_to_cover",
+          "high_yield",
+          "high_yield_display",
+          "high_discount_rate",
+          "high_discount_rate_display",
+          "high_discount_margin",
+          "price_per_100"
+        ],
+        "title": "AuctionOut",
+        "type": "object"
+      },
+      "AuctionsResponse": {
+        "properties": {
+          "auctions": {
+            "items": {
+              "$ref": "#/components/schemas/AuctionOut"
+            },
+            "title": "Auctions",
+            "type": "array"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "auctions"
+        ],
+        "title": "AuctionsResponse",
+        "type": "object"
+      },
       "BarOut": {
         "properties": {
           "close": {
@@ -909,6 +1033,71 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auctions": {
+      "get": {
+        "description": "The Treasury auction calendar: auctions held or announced from `start` to `end` (default: this week,\nMonday to Friday), announced ones without results yet.",
+        "operationId": "listAuctions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuctionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Auctions"
+      }
+    },
     "/api/bars": {
       "get": {
         "description": "Bars for a chart: its series at one interval, one fixed block at a time (app/blocks.py).\n\nA series is an instrument (`UST-10Y-CMT`: its yield), `spread(LONG,SHORT)` (long minus short) or\n`fly(WING,BODY,WING)` (2 x body minus both wings). Values are decimals (\"0.041\", \"0.0052\"), each with a\n`_display` form in the series' `unit` (percent for a yield, basis points for a spread or fly). Blocks are a year of days or a decade of weeks or months, so a\nscreenful is a handful of requests and the same block is always the same URL: a finished\nblock (`final`) is cached by the browser for a day. `source` (UST-PAR, H15-TCM) narrows yields to one\npublisher. All arithmetic is Decimal; values are strings.",

@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 from app.upstream import (
+    AuctionRow,
     Bar,
     Bars,
     Identifier,
@@ -73,6 +74,20 @@ class FakeSecurities:
         rows = [r for r in (MATURED, NOTE_ROW) if include_inactive or r.status == "active"]
         rows = [r for r in rows if not security_type or r.security_type == security_type]
         return SecurityList("2026-10-03", len(rows), rows[:limit or 1000])
+
+    def list_auctions(self, start, end, limit=0):
+        self.calls.append(("list_auctions", start, end))
+        rows = [
+            AuctionRow(500, "UST-4.25-2035-08-15", {"cusip": "91282CNC1", "security_type": "note", "term": "10-Year",
+                                                   "reopening": "true", "auction_date": "2026-10-07",
+                                                   "issue_date": "2026-10-15", "offering_amount": "42000000000",
+                                                   "total_accepted": "", "high_yield": ""}),
+            AuctionRow(501, "UST-B-2027-04-08", {"cusip": "912797AB9", "security_type": "bill", "term": "26-Week",
+                                                "reopening": "false", "auction_date": "2026-10-05",
+                                                "offering_amount": "73000000000", "total_accepted": "73000100000",
+                                                "high_discount_rate": "0.03805", "bid_to_cover": "2.87"}),
+        ]
+        return sorted((r for r in rows if start <= r.fields["auction_date"] <= end), key=lambda r: r.fields["auction_date"])
 
     def get_security(self, name, as_of=""):
         if name.upper() not in ("UST-4.25-2035-08-15", "UST-10Y-OTR", "91282CNC1"):

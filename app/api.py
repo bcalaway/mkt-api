@@ -462,6 +462,64 @@ def get_security(name: str, sec: Sec, quo: Quo):
     )
 
 
+class AuctionOut(BaseModel):
+    security: str  # short name: UST-4.25-2035-08-15
+    cusip: str
+    type: str  # bill, note, bond, tips, frn
+    term: str  # the program auctioned: 10-Year, 13-Week
+    reopening: bool
+    announcement_date: str
+    auction_date: str
+    issue_date: str
+    offering_amount: str  # dollars
+    held: bool  # results are in
+    total_accepted: str  # dollars; "" until held
+    bid_to_cover: str
+    high_yield: str  # decimal (notes, bonds, TIPS); ""
+    high_yield_display: str  # percent: "4.125"
+    high_discount_rate: str  # decimal (bills); ""
+    high_discount_rate_display: str
+    high_discount_margin: str  # decimal (FRNs); ""
+    price_per_100: str
+
+
+class AuctionsResponse(BaseModel):
+    start: str
+    end: str
+    auctions: list[AuctionOut]  # by auction date
+
+
+def _pct_or_empty(v: str) -> str:
+    return percent(v) if v else ""
+
+
+@router.get("/auctions", operation_id="listAuctions", response_model=AuctionsResponse)
+def list_auctions(sec: Sec, start: date | None = None, end: date | None = None):
+    """The Treasury auction calendar: auctions held or announced from `start` to `end` (default: this week,
+    Monday to Friday), announced ones without results yet."""
+    today = _today()
+    start = start or today - timedelta(days=today.weekday())
+    end = end or start + timedelta(days=4)
+    if end < start or (end - start).days > 366:
+        raise HTTPException(422, "end must be on or after start, at most a year later")
+    rows = sec.list_auctions(start.isoformat(), end.isoformat())
+    out = []
+    for r in rows:
+        f = r.fields
+        out.append(AuctionOut(
+            security=r.short_name, cusip=f.get("cusip", ""), type=f.get("security_type", ""), term=f.get("term", ""),
+            reopening=f.get("reopening") == "true", announcement_date=f.get("announcement_date", ""),
+            auction_date=f.get("auction_date", ""), issue_date=f.get("issue_date", ""),
+            offering_amount=f.get("offering_amount", ""), held=bool(f.get("total_accepted")),
+            total_accepted=f.get("total_accepted", ""), bid_to_cover=f.get("bid_to_cover", ""),
+            high_yield=f.get("high_yield", ""), high_yield_display=_pct_or_empty(f.get("high_yield", "")),
+            high_discount_rate=f.get("high_discount_rate", ""),
+            high_discount_rate_display=_pct_or_empty(f.get("high_discount_rate", "")),
+            high_discount_margin=f.get("high_discount_margin", ""), price_per_100=f.get("price_per_100", ""),
+        ))
+    return AuctionsResponse(start=start.isoformat(), end=end.isoformat(), auctions=out)
+
+
 class EventOut(BaseModel):
     date: str
     key: str  # the note's key in secmaster-svc ("gap-2002-2006")

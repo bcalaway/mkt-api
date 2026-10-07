@@ -265,3 +265,14 @@ def test_a_security_charts_its_price(fakes):
     assert ("series", (500,), "2026-01-01", "2026-10-03", "", "price") in quo.calls
     inst = client.get("/api/instruments/UST-4.25-2035-08-15").json()
     assert inst["latest"]["display"] == "99.828125"
+
+
+def test_the_auction_calendar_defaults_to_this_week(fakes):
+    out = client.get("/api/auctions").json()  # today is Saturday 2026-10-03: Monday 9-28 to Friday 10-2
+    assert (out["start"], out["end"], out["auctions"]) == ("2026-09-28", "2026-10-02", [])
+    week = client.get("/api/auctions", params={"start": "2026-10-05", "end": "2026-10-09"}).json()["auctions"]
+    assert [a["security"] for a in week] == ["UST-B-2027-04-08", "UST-4.25-2035-08-15"]
+    bill, note = week
+    assert bill["held"] and bill["high_discount_rate_display"] == "3.805" and bill["bid_to_cover"] == "2.87"
+    assert not note["held"] and note["reopening"] and note["high_yield_display"] == ""
+    assert client.get("/api/auctions", params={"start": "2026-10-09", "end": "2026-10-05"}).status_code == 422
