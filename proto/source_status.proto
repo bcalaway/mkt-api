@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package mkt_data;
+
+// How each source's captures are going (docs/phase-3.md, step 8): every
+// source mkt-data captures (calendar pages, the CMT yields, the Treasury
+// securities sources), with its latest fetch and parse, recent errors, what's
+// stored, and which periods it covers. mkt-api reads this for mkt-ui's
+// Sources screen; it's the same information as the /metrics source gauges and
+// GET /jobs/checks, in one place.
+//
+// Internal-only per ADR-0020: mkt-data:9090 on the home-platform network.
+// Timestamps ISO 8601 with offset (empty for none).
+service SourceStatus {
+  // Every source, with its status.
+  rpc ListSourceStatus(ListSourceStatusRequest) returns (ListSourceStatusResponse);
+  // One source: its status, its newest fetch attempts and reparses, and its
+  // periods by year.
+  rpc GetSourceStatus(GetSourceStatusRequest) returns (SourceStatusDetail);
+}
+
+message ListSourceStatusRequest {}
+
+message SourceState {
+  string name = 1;           // FED-K8, UST-PAR, TD-PRICES
+  string group = 2;          // calendars | rates | securities
+  string calendar = 3;       // the calendar it's captured for (calendars) or published on (the others)
+  string kind = 4;           // published | rules | projected
+  string period_kind = 5;    // day | month | year for sources fetched a period at a time; empty: one page
+  string url = 6;            // a period source's is a template
+  string description = 7;
+  bool parsed = 8;           // false: kept raw, no parser yet
+  int64 captures = 9;        // raw captures stored
+  int64 capture_bytes = 10;
+  int64 latest_capture_id = 11;   // 0: nothing captured yet
+  string latest_capture_at = 12;
+  string last_success_at = 13;    // the last fetch that worked (new or unchanged)
+  string last_check_at = 14;      // the last fetch attempt or reparse
+  string last_outcome = 15;       // new | unchanged | error | reparse
+  string last_parse_outcome = 16; // ok | error | empty (a fetch error, or no parser)
+  string last_error = 17;         // the last check's fetch or parse error; empty if it worked
+  int32 checks_7d = 18;           // fetch attempts and reparses in the last 7 days
+  int32 errors_7d = 19;           // of those, fetch or parse errors
+  int32 periods = 20;             // distinct periods captured (0 for a one-page source)
+  string first_period = 21;
+  string last_period = 22;
+}
+
+message ListSourceStatusResponse {
+  repeated SourceState sources = 1;
+}
+
+message GetSourceStatusRequest {
+  string source = 1;
+  int32 checks = 2;  // how many of the newest checks (default 50, at most 500)
+}
+
+message SourceCheckRow {
+  int64 id = 1;
+  string checked_at = 2;
+  string outcome = 3;        // new | unchanged | error | reparse
+  int64 capture_id = 4;      // 0: none (a fetch error)
+  string period = 5;
+  string detail = 6;         // a fetch error, or a note ("markup changed, visible text identical")
+  string parse_outcome = 7;  // ok | error | empty
+  string parse_detail = 8;
+}
+
+message PeriodYear {
+  string year = 1;
+  int32 periods = 2;         // distinct periods captured in the year
+  int64 captures = 3;
+  int64 capture_bytes = 4;
+}
+
+message SourceStatusDetail {
+  SourceState source = 1;
+  repeated SourceCheckRow checks = 2;
+  repeated PeriodYear years = 3;  // period sources only, oldest first
+}

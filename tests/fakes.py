@@ -1,4 +1,4 @@
-"""Stand-ins for secmaster-svc and quote-svc (app/upstream.py)."""
+"""Stand-ins for secmaster-svc, quote-svc and mkt-data (app/upstream.py)."""
 
 from decimal import Decimal
 
@@ -12,11 +12,15 @@ from app.upstream import (
     Note,
     NotFound,
     OnTheRun,
+    PeriodYear,
     Point,
     Security,
     SecurityList,
     SecuritySummary,
     Series,
+    SourceCheck,
+    SourceDetail,
+    SourceState,
 )
 
 TWO = Instrument(2, "UST-2Y-CMT", "P2Y", "US Treasury 2-year constant maturity yield", type="cmt_yield",
@@ -129,3 +133,33 @@ class FakeQuotes:
             d = max(days, default="")
             out.append(Latest(i, d, *(days[d] if d else ("", ""))))
         return out
+
+
+PRICES_SRC = SourceState("TD-PRICES", "securities", "SIFMA-US", "published", "day", "https://www.treasurydirect.gov/",
+                         "FedInvest prices", True, captures=4800, capture_bytes=520_000_000, latest_capture_id=8100,
+                         latest_capture_at="2026-10-07T23:16:00+00:00", last_success_at="2026-10-06T23:16:00+00:00",
+                         last_check_at="2026-10-07T23:16:00+00:00", last_outcome="error",
+                         last_error="HTTP 503 from FedInvest", checks_7d=40, errors_7d=1, periods=4700,
+                         first_period="2008-01-02", last_period="2026-10-07")
+FED_SRC = SourceState("FED-K8", "calendars", "FED", "published", "", "https://www.federalreserve.gov/", "K.8", True,
+                      captures=12, capture_bytes=600_000, latest_capture_id=40, latest_capture_at="2026-10-01T00:00:00+00:00",
+                      last_success_at="2026-10-07T00:00:00+00:00", last_check_at="2026-10-07T00:00:00+00:00",
+                      last_outcome="unchanged", last_parse_outcome="ok", checks_7d=1)
+NEVER_SRC = SourceState("NYSE-RULES", "calendars", "NYSE", "rules", "", "", "rules", False)
+
+
+class FakeSources:
+    def __init__(self):
+        self.calls = []
+
+    def list_sources(self):
+        return [FED_SRC, PRICES_SRC, NEVER_SRC]
+
+    def get_source(self, name, checks=0):
+        self.calls.append(("get", name, checks))
+        if name != "TD-PRICES":
+            raise NotFound(name)
+        return SourceDetail(PRICES_SRC, [
+            SourceCheck(9, "2026-10-07T23:16:00+00:00", "error", 0, "2026-10-07", "HTTP 503 from FedInvest"),
+            SourceCheck(8, "2026-10-06T23:16:00+00:00", "new", 8099, "2026-10-06", "", "ok")],
+            [PeriodYear("2025", 250, 252, 27_000_000), PeriodYear("2026", 190, 200, 21_000_000)])

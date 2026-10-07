@@ -27,11 +27,15 @@ from app import blocks
 from app.upstream import (
     GrpcQuotes,
     GrpcSecurities,
+    GrpcSources,
     Instrument,
     NotFound,
     Quotes,
     Securities,
     SecuritySummary,
+    SourceDetail,
+    Sources,
+    SourceState,
     UpstreamError,
 )
 
@@ -54,6 +58,10 @@ def securities() -> Securities:
 
 def quotes() -> Quotes:
     return GrpcQuotes()
+
+
+def sources() -> Sources:
+    return GrpcSources()
 
 
 _instruments_cache: dict = {}
@@ -542,6 +550,96 @@ EVENT_TITLES = [
 ]
 DETAIL_CACHE_SECONDS = INSTRUMENTS_CACHE_SECONDS
 _detail_cache: dict = {}
+
+
+# --- Sources: mkt-data's sources and how their captures are going (phase 3, step 8) ---
+
+
+class SourceOut(BaseModel):
+    name: str  # FED-K8, UST-PAR, TD-PRICES
+    group: str  # calendars | rates | securities
+    calendar: str
+    kind: str  # published | rules | projected
+    period_kind: str  # day | month | year; "" for a one-page source
+    url: str
+    description: str
+    parsed: bool  # false: kept raw, no parser yet
+    status: str  # error (the last fetch or parse failed) | never (nothing captured) | raw (no parser) | ok
+    captures: int
+    capture_bytes: int
+    latest_capture_id: int
+    latest_capture_at: str
+    last_success_at: str
+    last_check_at: str
+    last_outcome: str  # new | unchanged | error | reparse
+    last_parse_outcome: str  # ok | error | ""
+    last_error: str
+    checks_7d: int
+    errors_7d: int
+    periods: int
+    first_period: str
+    last_period: str
+
+
+class SourcesResponse(BaseModel):
+    sources: list[SourceOut]
+
+
+class SourceCheckOut(BaseModel):
+    id: int
+    checked_at: str
+    outcome: str
+    capture_id: int  # 0: none (a fetch error)
+    period: str
+    detail: str
+    parse_outcome: str
+    parse_detail: str
+
+
+class PeriodYearOut(BaseModel):
+    year: str
+    periods: int
+    captures: int
+    capture_bytes: int
+
+
+class SourceDetailOut(BaseModel):
+    source: SourceOut
+    checks: list[SourceCheckOut]
+    years: list[PeriodYearOut]
+
+
+Src = Annotated[Sources, Depends(sources)]
+
+
+def source_status(x: SourceState) -> str:
+    if x.last_outcome == "error" or x.last_parse_outcome == "error":
+        return "error"
+    if not x.latest_capture_id:
+        return "never"
+    return "ok" if x.parsed else "raw"
+
+
+def _source(x: SourceState) -> SourceOut:
+    return SourceOut(**vars(x), status=source_status(x))
+
+
+@router.get("/sources", operation_id="listSources", response_model=SourcesResponse)
+def list_sources(src: Src):
+    """Every source mkt-data captures (calendar pages, CMT yields, Treasury securities), with how its captures
+    are going: the latest fetch and parse, errors in the last week, what's stored and the periods it covers."""
+    return SourcesResponse(sources=[_source(x) for x in src.list_sources()])
+
+
+@router.get("/sources/{name}", operation_id="getSource", response_model=SourceDetailOut)
+def get_source(name: str, src: Src, checks: Annotated[int, Query(ge=1, le=500)] = 50):
+    """One source: its status, its newest fetch attempts and reparses, and (fetched by period) its periods by year."""
+    try:
+        d: SourceDetail = src.get_source(name.strip().upper(), checks)
+    except NotFound:
+        raise HTTPException(404, f"no source named {name!r}") from None
+    return SourceDetailOut(source=_source(d.source), checks=[SourceCheckOut(**vars(c)) for c in d.checks],
+                           years=[PeriodYearOut(**vars(y)) for y in d.years])
 
 
 def event_title(key: str) -> str:

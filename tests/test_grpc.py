@@ -8,8 +8,15 @@ from concurrent import futures
 import grpc
 import pytest
 
-from app.grpc_gen import quotes_pb2, quotes_pb2_grpc, securities_pb2, securities_pb2_grpc
-from app.upstream import GrpcQuotes, GrpcSecurities, NotFound, UpstreamError
+from app.grpc_gen import (
+    quotes_pb2,
+    quotes_pb2_grpc,
+    securities_pb2,
+    securities_pb2_grpc,
+    source_status_pb2,
+    source_status_pb2_grpc,
+)
+from app.upstream import GrpcQuotes, GrpcSecurities, GrpcSources, NotFound, UpstreamError
 
 TEN = securities_pb2.Instrument(
     sec_id=10, short_name="UST-10Y-CMT", tenor="P10Y", description="10-year", status="active", type="cmt_yield",
@@ -51,11 +58,29 @@ class Quotes(quotes_pb2_grpc.QuotesServicer):
             sec_id=10, short_name="UST-10Y-CMT", as_of="2026-10-02", value="0.041", source="UST-PAR")])
 
 
+PRICES = source_status_pb2.SourceState(name="TD-PRICES", group="securities", calendar="SIFMA-US", period_kind="day",
+                                      parsed=True, captures=3, latest_capture_id=9, last_outcome="new", periods=3)
+
+
+class SourceStatus(source_status_pb2_grpc.SourceStatusServicer):
+    def ListSourceStatus(self, request, context):
+        return source_status_pb2.ListSourceStatusResponse(sources=[PRICES])
+
+    def GetSourceStatus(self, request, context):
+        if request.source != "TD-PRICES":
+            context.abort(grpc.StatusCode.NOT_FOUND, f"no source {request.source}")
+        assert request.checks == 5
+        return source_status_pb2.SourceStatusDetail(
+            source=PRICES, checks=[source_status_pb2.SourceCheckRow(id=1, outcome="new", capture_id=9, period="2026-10-06")],
+            years=[source_status_pb2.PeriodYear(year="2026", periods=3, captures=3, capture_bytes=300)])
+
+
 @pytest.fixture
 def target():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
     securities_pb2_grpc.add_SecuritiesServicer_to_server(Securities(), server)
     quotes_pb2_grpc.add_QuotesServicer_to_server(Quotes(), server)
+    source_status_pb2_grpc.add_SourceStatusServicer_to_server(SourceStatus(), server)
     port = server.add_insecure_port("localhost:0")
     server.start()
     yield f"localhost:{port}"
@@ -93,3 +118,13 @@ def test_an_unreachable_service_is_an_upstream_error(monkeypatch):
     monkeypatch.setattr(upstream, "settings", replace(upstream.settings, grpc_timeout_seconds=1))
     with pytest.raises(UpstreamError, match="UNAVAILABLE|DEADLINE"):
         GrpcSecurities("localhost:1").list_instruments()
+
+
+def test_sources(target):
+    src = GrpcSources(target)
+    listed = src.list_sources()
+    assert [(s.name, s.period_kind, s.periods) for s in listed] == [("TD-PRICES", "day", 3)]
+    d = src.get_source("TD-PRICES", 5)
+    assert d.source.latest_capture_id == 9 and d.checks[0].capture_id == 9 and d.years[0].capture_bytes == 300
+    with pytest.raises(NotFound):
+        src.get_source("NOPE", 5)
