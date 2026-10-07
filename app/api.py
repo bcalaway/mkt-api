@@ -30,6 +30,8 @@ router = APIRouter(prefix="/api")
 NEW_YORK = ZoneInfo("America/New_York")
 # How far back a curve date looks for the last business day on or before it.
 CURVE_LOOKBACK_DAYS = 10
+# The curve is the constant-maturity yields; Treasury securities (ust_note, ...) are priced, not on it.
+CURVE_TYPE = "cmt_yield"
 INSTRUMENTS_CACHE_SECONDS = 300
 OFFSET = re.compile(r"^(\d{1,2})([DWMY])$")
 
@@ -159,6 +161,7 @@ class InstrumentSummary(BaseModel):
     tenor: str  # ISO 8601: P10Y, P6W
     description: str
     status: str
+    type: str = ""  # cmt_yield, ust_bill, ust_note, ust_bond, ust_tips, ust_frn, ust_strip_principal, ...
 
 
 class IdentifierOut(BaseModel):
@@ -247,7 +250,7 @@ class BarsResponse(BaseModel):
 
 def _summary(i: Instrument) -> InstrumentSummary:
     return InstrumentSummary(name=i.short_name, aliases=list(i.aliases), tenor=i.tenor, description=i.description,
-                             status=i.status)
+                             status=i.status, type=i.type)
 
 
 Sec = Annotated[Securities, Depends(securities)]
@@ -258,9 +261,12 @@ Quo = Annotated[Quotes, Depends(quotes)]
 
 
 @router.get("/instruments", operation_id="listInstruments", response_model=list[InstrumentSummary])
-def list_instruments(sec: Sec):
-    """Every instrument, shortest tenor first."""
-    return [_summary(i) for i in _instruments(sec)]
+def list_instruments(sec: Sec, type_: Annotated[str | None, Query(alias="type", max_length=40)] = None):
+    """Every instrument, or those of one type (`cmt_yield` for the curve's tenors); shortest tenor first.
+
+    There are thousands of Treasury securities, so a screen that wants the tenors asks for `type=cmt_yield`.
+    """
+    return [_summary(i) for i in _instruments(sec) if not type_ or i.type == type_]
 
 
 @router.get("/instruments/{name}", operation_id="getInstrument", response_model=InstrumentDetail)
@@ -273,7 +279,7 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
     latest = LatestOut(date=got[0].as_of, value=got[0].value, display=percent(got[0].value),
                        source=got[0].source) if got else None
     return InstrumentDetail(
-        **_summary(i).model_dump(), type=i.type, currency=i.currency, country=i.country, curve=i.curve,
+        **_summary(i).model_dump(), currency=i.currency, country=i.country, curve=i.curve,
         calendar=i.calendar,
         identifiers=[IdentifierOut(scheme=x.scheme, value=x.value, valid_from=x.valid_from or None,
                                    valid_to=x.valid_to or None) for x in i.identifiers],
@@ -298,7 +304,7 @@ def curve(sec: Sec, quo: Quo, date_: Annotated[date | None, Query(alias="date")]
     """
     base = date_ or _today()
     wanted = [("latest" if date_ is None else "date", base)] + [(c.upper(), offset_date(base, c)) for c in compare or []]
-    insts = [i for i in _instruments(sec) if i.status == "active"]
+    insts = [i for i in _instruments(sec) if i.status == "active" and i.type == CURVE_TYPE]
     curves = []
     for label, day in wanted:
         got = quo.series([i.sec_id for i in insts], (day - timedelta(days=CURVE_LOOKBACK_DAYS)).isoformat(),
