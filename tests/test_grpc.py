@@ -92,7 +92,20 @@ class Calendars(calendars_pb2_grpc.CalendarsServicer):
 
     def Closes(self, request, context):
         return calendars_pb2.ClosesResponse(calendar=request.calendar, closes=[calendars_pb2.Close(
-            date="2026-10-12", status="closed", holiday="Columbus Day")])
+            date="2026-10-12", status="closed", holiday="Columbus Day", source="SIFMA-US-HOLIDAYS")])
+
+    def ListSources(self, request, context):
+        return calendars_pb2.ListCalendarSourcesResponse(calendar=request.calendar, sources=[
+            calendars_pb2.CalendarSource(name="SIFMA-US-HOLIDAYS", kind="published", rank=1, years=2)])
+
+    def DayHistory(self, request, context):
+        return calendars_pb2.DayHistoryResponse(calendar=request.calendar, date=request.date, versions=[
+            calendars_pb2.DayVersion(date=request.date, status="closed", source="SIFMA-US-HOLIDAYS", capture_id=7)])
+
+    def Disagreements(self, request, context):
+        return calendars_pb2.DisagreementsResponse(calendar=request.calendar, days=[calendars_pb2.Disagreement(
+            date="2026-11-27", source="SIFMA-US-HOLIDAYS", differs="status", source_says="open",
+            calendar_says="early_close 14:00", decided_by="SIFMA-US-RULES", decided_by_higher=False)])
 
     def Coverage(self, request, context):
         return calendars_pb2.CoverageResponse(calendar=request.calendar, years=[calendars_pb2.YearCoverage(
@@ -164,7 +177,10 @@ def test_sources(target):
 def test_calendars(target):
     cal = GrpcCalendars(target)
     assert [(c.name, c.last_year) for c in cal.list_calendars()] == [("SIFMA-US", 2100)]
-    assert cal.closes("SIFMA-US", "2026-10-01", "2026-10-31")[0].holiday == "Columbus Day"
+    assert cal.closes("SIFMA-US", "2026-10-01", "2026-10-31")[0].source == "SIFMA-US-HOLIDAYS"
+    assert cal.sources("SIFMA-US")[0].rank == 1
+    assert cal.day_history("SIFMA-US", "2026-10-12")[0].capture_id == 7
+    assert cal.disagreements("SIFMA-US")[0].decided_by_higher is False
     assert cal.coverage("SIFMA-US")[0].kind == "published"
     assert cal.business_day("SIFMA-US", "2026-10-13").status == "open"
     with pytest.raises(OutOfRange):

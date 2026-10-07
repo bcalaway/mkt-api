@@ -255,6 +255,42 @@ class Close:
     holiday: str = ""
     close_time: str = ""  # HH:MM local, early closes only
     projected: bool = False
+    source: str = ""  # the mkt-data source that decided the day
+
+
+@dataclass(frozen=True)
+class CalendarSource:
+    name: str
+    kind: str  # published | rules | projected
+    rank: int  # 1 is the highest precedence
+    years: int = 0
+    first_year: int = 0
+    last_year: int = 0
+
+
+@dataclass(frozen=True)
+class DayVersion:
+    date: str
+    status: str
+    holiday: str = ""
+    close_time: str = ""
+    source: str = ""
+    capture_id: int = 0
+    valid_from: str = ""
+    valid_to: str = ""  # "": current
+
+
+@dataclass(frozen=True)
+class Disagreement:
+    date: str
+    source: str
+    differs: str  # status | time | name
+    source_says: str
+    source_holiday: str = ""
+    calendar_says: str = ""
+    calendar_holiday: str = ""
+    decided_by: str = ""
+    decided_by_higher: bool = True
 
 
 @dataclass(frozen=True)
@@ -280,6 +316,9 @@ class Calendars(Protocol):
     def closes(self, calendar: str, start: str, end: str) -> list[Close]: ...  # NotFound
     def coverage(self, calendar: str) -> list[YearCoverage]: ...  # NotFound
     def business_day(self, calendar: str, on: str) -> DayAnswer: ...  # NotFound, OutOfRange
+    def sources(self, calendar: str) -> list[CalendarSource]: ...  # NotFound
+    def day_history(self, calendar: str, on: str) -> list[DayVersion]: ...  # NotFound
+    def disagreements(self, calendar: str) -> list[Disagreement]: ...  # NotFound
 
 
 class Sources(Protocol):
@@ -455,7 +494,7 @@ class GrpcCalendars(_Grpc):
         from app.grpc_gen import calendars_pb2 as pb
 
         r = self._call(self._stub, "Closes", pb.ClosesRequest(calendar=calendar, start=start, end=end))
-        return [Close(c.date, c.status, c.holiday, c.close_time, c.projected) for c in r.closes]
+        return [Close(c.date, c.status, c.holiday, c.close_time, c.projected, c.source) for c in r.closes]
 
     def coverage(self, calendar: str) -> list[YearCoverage]:
         from app.grpc_gen import calendars_pb2 as pb
@@ -468,3 +507,21 @@ class GrpcCalendars(_Grpc):
 
         r = self._call(self._stub, "BusinessDay", pb.BusinessDayRequest(calendar=calendar, date=on))
         return DayAnswer(r.calendar, r.date, r.business_day, r.status, r.holiday, r.close_time, r.projected)
+
+    def sources(self, calendar: str) -> list[CalendarSource]:
+        from app.grpc_gen import calendars_pb2 as pb
+
+        r = self._call(self._stub, "ListSources", pb.ListCalendarSourcesRequest(calendar=calendar))
+        return [CalendarSource(x.name, x.kind, x.rank, x.years, x.first_year, x.last_year) for x in r.sources]
+
+    def day_history(self, calendar: str, on: str) -> list[DayVersion]:
+        from app.grpc_gen import calendars_pb2 as pb
+
+        r = self._call(self._stub, "DayHistory", pb.DayHistoryRequest(calendar=calendar, date=on))
+        return [DayVersion(**{f: getattr(v, f) for f in DayVersion.__dataclass_fields__}) for v in r.versions]
+
+    def disagreements(self, calendar: str) -> list[Disagreement]:
+        from app.grpc_gen import calendars_pb2 as pb
+
+        r = self._call(self._stub, "Disagreements", pb.DisagreementsRequest(calendar=calendar))
+        return [Disagreement(**{f: getattr(d, f) for f in Disagreement.__dataclass_fields__}) for d in r.days]
