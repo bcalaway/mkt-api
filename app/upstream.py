@@ -1,8 +1,9 @@
-"""What mkt-api reads: secmaster-svc's instruments, quote-svc's quotes and mkt-data's sources, over gRPC.
+"""What mkt-api reads: secmaster-svc's instruments, quote-svc's quotes, mkt-data's sources and calendar-svc's calendars.
 
-`Securities`, `Quotes` and `Sources` are the interfaces the API uses; the
-Grpc* classes talk to the real services (proto/securities.proto,
-proto/quotes.proto and proto/source_status.proto, copied from those repos). Tests use fakes with the same methods. Answers are
+`Securities`, `Quotes`, `Sources` and `Calendars` are the interfaces the API
+uses; the Grpc* classes talk to the real services over gRPC
+(proto/securities.proto, proto/quotes.proto, proto/source_status.proto and
+proto/calendars.proto, copied from those repos). Tests use fakes with the same methods. Answers are
 plain dataclasses, values as the decimal strings quote-svc sends.
 
 Each call opens a channel and closes it: a handful of calls per page, on the
@@ -34,6 +35,10 @@ class UpstreamError(RuntimeError):
 
 class NotFound(LookupError):
     pass
+
+
+class OutOfRange(LookupError):
+    """A date in a year no source covers (calendar-svc's OUT_OF_RANGE)."""
 
 
 @dataclass(frozen=True)
@@ -234,6 +239,49 @@ class Quotes(Protocol):
     def latest(self, sec_ids: list[int], field: str = "yield") -> list[Latest]: ...
 
 
+@dataclass(frozen=True)
+class CalendarInfo:
+    name: str
+    description: str = ""
+    timezone: str = ""
+    first_year: int = 0
+    last_year: int = 0
+
+
+@dataclass(frozen=True)
+class Close:
+    date: str
+    status: str  # closed | early_close
+    holiday: str = ""
+    close_time: str = ""  # HH:MM local, early closes only
+    projected: bool = False
+
+
+@dataclass(frozen=True)
+class YearCoverage:
+    year: int
+    source: str  # the mkt-data source credited, e.g. SIFMA-US-ARCHIVE
+    kind: str  # published | rules | projected
+
+
+@dataclass(frozen=True)
+class DayAnswer:
+    calendar: str
+    date: str
+    business_day: bool
+    status: str  # open | closed | early_close | weekend
+    holiday: str = ""
+    close_time: str = ""
+    projected: bool = False
+
+
+class Calendars(Protocol):
+    def list_calendars(self) -> list[CalendarInfo]: ...
+    def closes(self, calendar: str, start: str, end: str) -> list[Close]: ...  # NotFound
+    def coverage(self, calendar: str) -> list[YearCoverage]: ...  # NotFound
+    def business_day(self, calendar: str, on: str) -> DayAnswer: ...  # NotFound, OutOfRange
+
+
 class Sources(Protocol):
     def list_sources(self) -> list[SourceState]: ...
     def get_source(self, name: str, checks: int = 0) -> SourceDetail: ...  # NotFound
@@ -262,6 +310,8 @@ class _Grpc:
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.NOT_FOUND:
                 raise NotFound(e.details()) from None
+            if e.code() == grpc.StatusCode.OUT_OF_RANGE:
+                raise OutOfRange(e.details()) from None
             raise UpstreamError(f"{self.target} {method}: {e.code().name} {e.details() or ''}".strip()) from None
         finally:
             total = _upstream_ms.get()
@@ -384,3 +434,37 @@ class GrpcSources(_Grpc):
             source=_state(r.source),
             checks=[SourceCheck(**{f: getattr(c, f) for f in SourceCheck.__dataclass_fields__}) for c in r.checks],
             years=[PeriodYear(y.year, y.periods, y.captures, y.capture_bytes) for y in r.years])
+
+
+class GrpcCalendars(_Grpc):
+    def __init__(self, target: str | None = None):
+        self.target = target or settings.calendar_grpc
+
+    def _stub(self, channel):
+        from app.grpc_gen import calendars_pb2_grpc
+
+        return calendars_pb2_grpc.CalendarsStub(channel)
+
+    def list_calendars(self) -> list[CalendarInfo]:
+        from app.grpc_gen import calendars_pb2 as pb
+
+        r = self._call(self._stub, "ListCalendars", pb.ListCalendarsRequest())
+        return [CalendarInfo(c.name, c.description, c.timezone, c.first_year, c.last_year) for c in r.calendars]
+
+    def closes(self, calendar: str, start: str, end: str) -> list[Close]:
+        from app.grpc_gen import calendars_pb2 as pb
+
+        r = self._call(self._stub, "Closes", pb.ClosesRequest(calendar=calendar, start=start, end=end))
+        return [Close(c.date, c.status, c.holiday, c.close_time, c.projected) for c in r.closes]
+
+    def coverage(self, calendar: str) -> list[YearCoverage]:
+        from app.grpc_gen import calendars_pb2 as pb
+
+        r = self._call(self._stub, "Coverage", pb.CoverageRequest(calendar=calendar))
+        return [YearCoverage(y.year, y.source, y.kind) for y in r.years]
+
+    def business_day(self, calendar: str, on: str) -> DayAnswer:
+        from app.grpc_gen import calendars_pb2 as pb
+
+        r = self._call(self._stub, "BusinessDay", pb.BusinessDayRequest(calendar=calendar, date=on))
+        return DayAnswer(r.calendar, r.date, r.business_day, r.status, r.holiday, r.close_time, r.projected)

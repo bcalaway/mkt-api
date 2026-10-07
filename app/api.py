@@ -20,16 +20,21 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from pydantic import BaseModel
 
 from app import blocks
 from app.upstream import (
+    CalendarInfo,
+    Calendars,
+    Close,
+    GrpcCalendars,
     GrpcQuotes,
     GrpcSecurities,
     GrpcSources,
     Instrument,
     NotFound,
+    OutOfRange,
     Quotes,
     Securities,
     SecuritySummary,
@@ -62,6 +67,10 @@ def quotes() -> Quotes:
 
 def sources() -> Sources:
     return GrpcSources()
+
+
+def calendars() -> Calendars:
+    return GrpcCalendars()
 
 
 _instruments_cache: dict = {}
@@ -640,6 +649,153 @@ def get_source(name: str, src: Src, checks: Annotated[int, Query(ge=1, le=500)] 
         raise HTTPException(404, f"no source named {name!r}") from None
     return SourceDetailOut(source=_source(d.source), checks=[SourceCheckOut(**vars(c)) for c in d.checks],
                            years=[PeriodYearOut(**vars(y)) for y in d.years])
+
+
+# --- Calendars: calendar-svc's golden holiday calendars (phase 3, step 8) ---
+
+NEXT_CLOSE_DAYS = 400  # how far ahead the list looks for each calendar's next close and early close
+
+
+class CloseOut(BaseModel):
+    date: str
+    status: str  # closed | early_close
+    holiday: str
+    close_time: str  # HH:MM local to the calendar, early closes only
+    projected: bool  # from a year no publisher covers yet: a best guess
+
+
+class CoverageOut(BaseModel):
+    published: int  # years from a publisher's page
+    rules: int  # years from a rules file
+    projected: int  # years run forward from the rules
+    last_published_year: int  # 0 if none
+
+
+class CalendarOut(BaseModel):
+    name: str
+    description: str
+    timezone: str
+    first_year: int
+    last_year: int
+    coverage: CoverageOut
+    next_close: CloseOut | None
+    next_early_close: CloseOut | None
+
+
+class CalendarsResponse(BaseModel):
+    as_of: str  # today in New York: "next" is from here
+    calendars: list[CalendarOut]
+
+
+class CalendarYearOut(BaseModel):
+    calendar: str
+    timezone: str
+    year: int
+    source: str  # the mkt-data source that decided the year
+    kind: str  # published | rules | projected
+    closes: list[CloseOut]
+
+
+class UpcomingDay(BaseModel):
+    date: str
+    calendars: dict[str, CloseOut]  # only the calendars that close or close early that day
+
+
+class UpcomingResponse(BaseModel):
+    start: str
+    end: str
+    calendars: list[str]
+    days: list[UpcomingDay]
+
+
+class DayOut(BaseModel):
+    calendar: str
+    covered: bool  # false: no source covers the year, so the rest is empty
+    business_day: bool
+    status: str  # open | closed | early_close | weekend; "" if not covered
+    holiday: str
+    close_time: str
+    projected: bool
+
+
+class DayLookupResponse(BaseModel):
+    date: str
+    weekday: str
+    calendars: list[DayOut]
+
+
+Cal = Annotated[Calendars, Depends(calendars)]
+
+
+def _close(c: Close) -> CloseOut:
+    return CloseOut(date=c.date, status=c.status, holiday=c.holiday, close_time=c.close_time, projected=c.projected)
+
+
+def _calendar(cal: Calendars, c: CalendarInfo, today: date) -> CalendarOut:
+    years = cal.coverage(c.name)
+    kinds = {k: sum(1 for y in years if y.kind == k) for k in ("published", "rules", "projected")}
+    published = [y.year for y in years if y.kind == "published"]
+    ahead = cal.closes(c.name, today.isoformat(), (today + timedelta(days=NEXT_CLOSE_DAYS)).isoformat())
+    closed = next((x for x in ahead if x.status == "closed"), None)
+    early = next((x for x in ahead if x.status == "early_close"), None)
+    return CalendarOut(name=c.name, description=c.description, timezone=c.timezone, first_year=c.first_year,
+                       last_year=c.last_year, coverage=CoverageOut(**kinds, last_published_year=max(published, default=0)),
+                       next_close=_close(closed) if closed else None, next_early_close=_close(early) if early else None)
+
+
+@router.get("/calendars", operation_id="listCalendars", response_model=CalendarsResponse)
+def list_calendars(cal: Cal):
+    """Every holiday calendar (FED, SIFMA-US, NYSE): its time zone, the years covered by kind of source, the furthest
+    published year, and the next close and early close."""
+    today = _today()
+    return CalendarsResponse(as_of=today.isoformat(), calendars=[_calendar(cal, c, today) for c in cal.list_calendars()])
+
+
+@router.get("/calendars/upcoming", operation_id="upcomingCloses", response_model=UpcomingResponse)
+def upcoming_closes(cal: Cal, days: Annotated[int, Query(ge=1, le=730)] = 180):
+    """The closes and early closes in the next `days` days across every calendar, a row per date, so the days where
+    FED, SIFMA-US and NYSE differ stand side by side."""
+    today = _today()
+    end = today + timedelta(days=days)
+    names = [c.name for c in cal.list_calendars()]
+    by_date: dict[str, dict[str, CloseOut]] = {}
+    for n in names:
+        for c in cal.closes(n, today.isoformat(), end.isoformat()):
+            by_date.setdefault(c.date, {})[n] = _close(c)
+    return UpcomingResponse(start=today.isoformat(), end=end.isoformat(), calendars=names,
+                            days=[UpcomingDay(date=d, calendars=v) for d, v in sorted(by_date.items())])
+
+
+@router.get("/calendars/day", operation_id="calendarDay", response_model=DayLookupResponse)
+def calendar_day(cal: Cal, date_: Annotated[date | None, Query(alias="date")] = None):
+    """Is a date (default today) a business day on each calendar, and if not, why."""
+    on = date_ or _today()
+    out = []
+    for c in cal.list_calendars():
+        try:
+            a = cal.business_day(c.name, on.isoformat())
+        except OutOfRange:
+            out.append(DayOut(calendar=c.name, covered=False, business_day=False, status="", holiday="", close_time="",
+                              projected=False))
+            continue
+        out.append(DayOut(calendar=c.name, covered=True, business_day=a.business_day, status=a.status,
+                          holiday=a.holiday, close_time=a.close_time, projected=a.projected))
+    return DayLookupResponse(date=on.isoformat(), weekday=on.strftime("%A"), calendars=out)
+
+
+@router.get("/calendars/{name}/{year}", operation_id="calendarYear", response_model=CalendarYearOut)
+def calendar_year(name: str, year: Annotated[int, Path(ge=1800, le=2200)], cal: Cal):
+    """One calendar's year: its closes and early closes, and the source that decided the year."""
+    wanted = name.strip().upper()
+    info = next((c for c in cal.list_calendars() if c.name.upper() == wanted), None)
+    if info is None:
+        raise HTTPException(404, f"no calendar named {name!r}")
+    cover = next((y for y in cal.coverage(info.name) if y.year == year), None)
+    if cover is None:
+        raise HTTPException(404, f"{info.name} doesn't cover {year} (it covers {info.first_year} to {info.last_year})")
+    closes = cal.closes(info.name, f"{year}-01-01", f"{year}-12-31")
+    return CalendarYearOut(calendar=info.name, timezone=info.timezone, year=year, source=cover.source, kind=cover.kind,
+                           closes=[_close(c) for c in closes])
 
 
 def event_title(key: str) -> str:

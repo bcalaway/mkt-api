@@ -296,6 +296,188 @@
         "title": "BarsResponse",
         "type": "object"
       },
+      "CalendarOut": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageOut"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "first_year": {
+            "title": "First Year",
+            "type": "integer"
+          },
+          "last_year": {
+            "title": "Last Year",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_early_close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "timezone",
+          "first_year",
+          "last_year",
+          "coverage",
+          "next_close",
+          "next_early_close"
+        ],
+        "title": "CalendarOut",
+        "type": "object"
+      },
+      "CalendarYearOut": {
+        "properties": {
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "closes": {
+            "items": {
+              "$ref": "#/components/schemas/CloseOut"
+            },
+            "title": "Closes",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calendar",
+          "timezone",
+          "year",
+          "source",
+          "kind",
+          "closes"
+        ],
+        "title": "CalendarYearOut",
+        "type": "object"
+      },
+      "CalendarsResponse": {
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "calendars": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarOut"
+            },
+            "title": "Calendars",
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of",
+          "calendars"
+        ],
+        "title": "CalendarsResponse",
+        "type": "object"
+      },
+      "CloseOut": {
+        "properties": {
+          "close_time": {
+            "title": "Close Time",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "holiday": {
+            "title": "Holiday",
+            "type": "string"
+          },
+          "projected": {
+            "title": "Projected",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "status",
+          "holiday",
+          "close_time",
+          "projected"
+        ],
+        "title": "CloseOut",
+        "type": "object"
+      },
+      "CoverageOut": {
+        "properties": {
+          "last_published_year": {
+            "title": "Last Published Year",
+            "type": "integer"
+          },
+          "projected": {
+            "title": "Projected",
+            "type": "integer"
+          },
+          "published": {
+            "title": "Published",
+            "type": "integer"
+          },
+          "rules": {
+            "title": "Rules",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "published",
+          "rules",
+          "projected",
+          "last_published_year"
+        ],
+        "title": "CoverageOut",
+        "type": "object"
+      },
       "CurveOut": {
         "properties": {
           "date": {
@@ -389,6 +571,75 @@
           "curves"
         ],
         "title": "CurveResponse",
+        "type": "object"
+      },
+      "DayLookupResponse": {
+        "properties": {
+          "calendars": {
+            "items": {
+              "$ref": "#/components/schemas/DayOut"
+            },
+            "title": "Calendars",
+            "type": "array"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "weekday",
+          "calendars"
+        ],
+        "title": "DayLookupResponse",
+        "type": "object"
+      },
+      "DayOut": {
+        "properties": {
+          "business_day": {
+            "title": "Business Day",
+            "type": "boolean"
+          },
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "close_time": {
+            "title": "Close Time",
+            "type": "string"
+          },
+          "covered": {
+            "title": "Covered",
+            "type": "boolean"
+          },
+          "holiday": {
+            "title": "Holiday",
+            "type": "string"
+          },
+          "projected": {
+            "title": "Projected",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calendar",
+          "covered",
+          "business_day",
+          "status",
+          "holiday",
+          "close_time",
+          "projected"
+        ],
+        "title": "DayOut",
         "type": "object"
       },
       "EventOut": {
@@ -1227,6 +1478,61 @@
         "title": "SourcesResponse",
         "type": "object"
       },
+      "UpcomingDay": {
+        "properties": {
+          "calendars": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CloseOut"
+            },
+            "title": "Calendars",
+            "type": "object"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "calendars"
+        ],
+        "title": "UpcomingDay",
+        "type": "object"
+      },
+      "UpcomingResponse": {
+        "properties": {
+          "calendars": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Calendars",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/UpcomingDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "calendars",
+          "days"
+        ],
+        "title": "UpcomingResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1419,6 +1725,167 @@
           }
         },
         "summary": "Get Bars"
+      }
+    },
+    "/api/calendars": {
+      "get": {
+        "description": "Every holiday calendar (FED, SIFMA-US, NYSE): its time zone, the years covered by kind of source, the furthest\npublished year, and the next close and early close.",
+        "operationId": "listCalendars",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Calendars"
+      }
+    },
+    "/api/calendars/day": {
+      "get": {
+        "description": "Is a date (default today) a business day on each calendar, and if not, why.",
+        "operationId": "calendarDay",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayLookupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar Day"
+      }
+    },
+    "/api/calendars/upcoming": {
+      "get": {
+        "description": "The closes and early closes in the next `days` days across every calendar, a row per date, so the days where\nFED, SIFMA-US and NYSE differ stand side by side.",
+        "operationId": "upcomingCloses",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 180,
+              "maximum": 730,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpcomingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upcoming Closes"
+      }
+    },
+    "/api/calendars/{name}/{year}": {
+      "get": {
+        "description": "One calendar's year: its closes and early closes, and the source that decided the year.",
+        "operationId": "calendarYear",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "maximum": 2200,
+              "minimum": 1800,
+              "title": "Year",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarYearOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar Year"
       }
     },
     "/api/curve": {

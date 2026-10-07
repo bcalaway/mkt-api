@@ -10,7 +10,7 @@ from app import api
 from app.main import app
 from app.openapi import schema_text
 from app.upstream import UpstreamError
-from tests.fakes import FakeQuotes, FakeSecurities, FakeSources
+from tests.fakes import FakeCalendars, FakeQuotes, FakeSecurities, FakeSources
 
 ROOT = Path(__file__).resolve().parent.parent
 client = TestClient(app)
@@ -290,3 +290,42 @@ def test_sources():
     assert [y["year"] for y in one["years"]] == ["2025", "2026"]
     assert client.get("/api/sources/NOPE").status_code == 404
     assert client.get("/api/sources/TD-PRICES", params={"checks": 0}).status_code == 422
+
+
+def _cal():
+    cal = FakeCalendars()
+    app.dependency_overrides[api.calendars] = lambda: cal
+    return cal
+
+
+def test_calendars_list_coverage_and_next_closes():
+    _cal()
+    out = client.get("/api/calendars").json()
+    assert out["as_of"] == "2026-10-03"
+    fed, sifma = out["calendars"]
+    assert sifma["coverage"] == {"published": 2, "rules": 1, "projected": 0, "last_published_year": 2026}
+    assert sifma["next_close"]["date"] == "2026-10-12" and sifma["next_early_close"]["close_time"] == "14:00"
+    assert fed["next_close"]["holiday"] == "Veterans Day" and fed["next_early_close"] is None
+
+
+def test_upcoming_closes_side_by_side():
+    _cal()
+    out = client.get("/api/calendars/upcoming", params={"days": 60}).json()
+    assert (out["start"], out["end"], out["calendars"]) == ("2026-10-03", "2026-12-02", ["FED", "SIFMA-US"])
+    assert [(d["date"], sorted(d["calendars"])) for d in out["days"]] == [
+        ("2026-10-12", ["SIFMA-US"]), ("2026-11-11", ["FED", "SIFMA-US"]), ("2026-11-27", ["SIFMA-US"])]
+
+
+def test_a_calendar_year_and_a_day():
+    _cal()
+    year = client.get("/api/calendars/sifma-us/2026").json()
+    assert (year["calendar"], year["source"], year["kind"], len(year["closes"])) == ("SIFMA-US", "SIFMA-US", "published", 3)
+    assert client.get("/api/calendars/NOPE/2026").status_code == 404
+    assert "covers 2025 to 2027" in client.get("/api/calendars/SIFMA-US/2030").json()["detail"]
+    day = client.get("/api/calendars/day", params={"date": "2026-10-12"}).json()
+    assert day["weekday"] == "Monday"
+    assert [(c["calendar"], c["business_day"], c["holiday"]) for c in day["calendars"]] == [
+        ("FED", True, ""), ("SIFMA-US", False, "Columbus Day")]
+    early = client.get("/api/calendars/day", params={"date": "2025-12-24"}).json()["calendars"]
+    assert early[0] == {"calendar": "FED", "covered": False, "business_day": False, "status": "", "holiday": "",
+                        "close_time": "", "projected": False}
