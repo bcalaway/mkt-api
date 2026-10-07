@@ -662,6 +662,54 @@ class CloseOut(BaseModel):
     holiday: str
     close_time: str  # HH:MM local to the calendar, early closes only
     projected: bool  # from a year no publisher covers yet: a best guess
+    source: str  # the mkt-data source that decided the day
+
+
+class CalendarSourceOut(BaseModel):
+    name: str
+    kind: str  # published | rules | projected
+    rank: int  # 1 is the highest precedence
+    years: int  # years credited to it
+    first_year: int
+    last_year: int
+
+
+class CalendarSourcesResponse(BaseModel):
+    calendar: str
+    sources: list[CalendarSourceOut]
+
+
+class DayVersionOut(BaseModel):
+    status: str
+    holiday: str
+    close_time: str
+    source: str
+    capture_id: int  # mkt-data's capture
+    valid_from: str
+    valid_to: str  # "": current
+
+
+class DayHistoryResponse(BaseModel):
+    calendar: str
+    date: str
+    versions: list[DayVersionOut]  # oldest first; empty: always open
+
+
+class DisagreementOut(BaseModel):
+    date: str
+    source: str  # the source that disagrees
+    differs: str  # status | time | name
+    source_says: str  # open | closed | early_close 13:00
+    source_holiday: str
+    calendar_says: str
+    calendar_holiday: str
+    decided_by: str  # "" when the calendar is open that day
+    decided_by_higher: bool  # false: a lower source decided a day a higher one covers
+
+
+class DisagreementsResponse(BaseModel):
+    calendar: str
+    days: list[DisagreementOut]
 
 
 class CoverageOut(BaseModel):
@@ -728,7 +776,8 @@ Cal = Annotated[Calendars, Depends(calendars)]
 
 
 def _close(c: Close) -> CloseOut:
-    return CloseOut(date=c.date, status=c.status, holiday=c.holiday, close_time=c.close_time, projected=c.projected)
+    return CloseOut(date=c.date, status=c.status, holiday=c.holiday, close_time=c.close_time, projected=c.projected,
+                    source=c.source)
 
 
 def _calendar(cal: Calendars, c: CalendarInfo, today: date) -> CalendarOut:
@@ -783,13 +832,44 @@ def calendar_day(cal: Cal, date_: Annotated[date | None, Query(alias="date")] = 
     return DayLookupResponse(date=on.isoformat(), weekday=on.strftime("%A"), calendars=out)
 
 
-@router.get("/calendars/{name}/{year}", operation_id="calendarYear", response_model=CalendarYearOut)
-def calendar_year(name: str, year: Annotated[int, Path(ge=1800, le=2200)], cal: Cal):
-    """One calendar's year: its closes and early closes, and the source that decided the year."""
+def _calendar_name(cal: Calendars, name: str) -> CalendarInfo:
     wanted = name.strip().upper()
     info = next((c for c in cal.list_calendars() if c.name.upper() == wanted), None)
     if info is None:
         raise HTTPException(404, f"no calendar named {name!r}")
+    return info
+
+
+# Declared before /calendars/{name}/{year}, which would otherwise take "sources" for a year.
+@router.get("/calendars/{name}/sources", operation_id="calendarSources", response_model=CalendarSourcesResponse)
+def calendar_sources(name: str, cal: Cal):
+    """A calendar's sources in precedence order, with the years each is credited for."""
+    info = _calendar_name(cal, name)
+    return CalendarSourcesResponse(calendar=info.name, sources=[CalendarSourceOut(**vars(x)) for x in cal.sources(info.name)])
+
+
+@router.get("/calendars/{name}/disagreements", operation_id="calendarDisagreements", response_model=DisagreementsResponse)
+def calendar_disagreements(name: str, cal: Cal):
+    """Days where a source says something other than the calendar, because another source decided them. calendar-svc
+    reads mkt-data's current rows for this, so it takes a few seconds."""
+    info = _calendar_name(cal, name)
+    return DisagreementsResponse(calendar=info.name, days=[DisagreementOut(**vars(d)) for d in cal.disagreements(info.name)])
+
+
+@router.get("/calendars/{name}/days/{day}", operation_id="calendarDayHistory", response_model=DayHistoryResponse)
+def calendar_day_history(name: str, day: date, cal: Cal):
+    """Every version of a day on one calendar, oldest first: how its status changed and which source said so."""
+    info = _calendar_name(cal, name)
+    rows = cal.day_history(info.name, day.isoformat())
+    return DayHistoryResponse(calendar=info.name, date=day.isoformat(), versions=[DayVersionOut(
+        status=v.status, holiday=v.holiday, close_time=v.close_time, source=v.source, capture_id=v.capture_id,
+        valid_from=v.valid_from, valid_to=v.valid_to) for v in rows])
+
+
+@router.get("/calendars/{name}/{year}", operation_id="calendarYear", response_model=CalendarYearOut)
+def calendar_year(name: str, year: Annotated[int, Path(ge=1800, le=2200)], cal: Cal):
+    """One calendar's year: its closes and early closes, and the source that decided the year."""
+    info = _calendar_name(cal, name)
     cover = next((y for y in cal.coverage(info.name) if y.year == year), None)
     if cover is None:
         raise HTTPException(404, f"{info.name} doesn't cover {year} (it covers {info.first_year} to {info.last_year})")

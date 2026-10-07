@@ -7,8 +7,11 @@ from app.upstream import (
     Bar,
     Bars,
     CalendarInfo,
+    CalendarSource,
     Close,
     DayAnswer,
+    DayVersion,
+    Disagreement,
     Identifier,
     Instrument,
     Latest,
@@ -173,8 +176,9 @@ class FakeSources:
 # Two calendars from 2026-10-03 (the tests' today, a Saturday): Columbus Day closes SIFMA-US but not FED... and both
 # close on Veterans Day; SIFMA-US closes early the day after Thanksgiving.
 CLOSES = {
-    "SIFMA-US": [Close("2026-10-12", "closed", "Columbus Day"), Close("2026-11-11", "closed", "Veterans Day"),
-                 Close("2026-11-27", "early_close", "Day after Thanksgiving", "14:00")],
+    "SIFMA-US": [Close("2026-10-12", "closed", "Columbus Day", source="SIFMA-US-HOLIDAYS"),
+                 Close("2026-11-11", "closed", "Veterans Day", source="SIFMA-US-HOLIDAYS"),
+                 Close("2026-11-27", "early_close", "Day after Thanksgiving", "14:00", source="SIFMA-US-HOLIDAYS")],
     "FED": [Close("2026-11-11", "closed", "Veterans Day"), Close("2027-10-11", "closed", "Columbus Day", projected=True)],
 }
 COVER = {
@@ -206,3 +210,18 @@ class FakeCalendars:
         if c:
             return DayAnswer(calendar, on, c.status == "early_close", c.status, c.holiday, c.close_time, c.projected)
         return DayAnswer(calendar, on, True, "open")
+
+    def sources(self, calendar):
+        if calendar not in COVER:
+            raise NotFound(calendar)
+        return [CalendarSource("SIFMA-US-HOLIDAYS", "published", 1, 2, 2026, 2027),
+                CalendarSource("SIFMA-US-PROJECTED", "projected", 2, 73, 2028, 2100)]
+
+    def day_history(self, calendar, on):
+        return [DayVersion(on, "early_close", "Good Friday", "12:00", "SIFMA-US-HOLIDAYS", 7, "2026-01-02T00:00:00+00:00",
+                           "2026-03-01T00:00:00+00:00"),
+                DayVersion(on, "closed", "Good Friday", "", "SIFMA-US-HOLIDAYS", 9, "2026-03-01T00:00:00+00:00")]
+
+    def disagreements(self, calendar):
+        return [Disagreement("2026-11-27", "SIFMA-US-HOLIDAYS", "status", "open", "", "early_close 14:00",
+                             "Day after Thanksgiving", "SIFMA-US-RULES", False)]

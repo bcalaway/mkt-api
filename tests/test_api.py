@@ -329,3 +329,18 @@ def test_a_calendar_year_and_a_day():
     early = client.get("/api/calendars/day", params={"date": "2025-12-24"}).json()["calendars"]
     assert early[0] == {"calendar": "FED", "covered": False, "business_day": False, "status": "", "holiday": "",
                         "close_time": "", "projected": False}
+
+
+def test_a_calendars_sources_history_and_disagreements():
+    _cal()
+    srcs = client.get("/api/calendars/sifma-us/sources").json()
+    assert srcs["calendar"] == "SIFMA-US" and [s["rank"] for s in srcs["sources"]] == [1, 2]
+    hist = client.get("/api/calendars/SIFMA-US/days/2026-04-03").json()
+    assert [(v["status"], v["capture_id"], v["valid_to"]) for v in hist["versions"]] == [
+        ("early_close", 7, "2026-03-01T00:00:00+00:00"), ("closed", 9, "")]
+    dis = client.get("/api/calendars/SIFMA-US/disagreements").json()["days"]
+    assert dis[0]["decided_by_higher"] is False and dis[0]["calendar_says"] == "early_close 14:00"
+    year = client.get("/api/calendars/SIFMA-US/2026").json()
+    assert year["closes"][0]["source"] == "SIFMA-US-HOLIDAYS"
+    assert client.get("/api/calendars/NOPE/sources").status_code == 404
+    assert client.get("/api/calendars/SIFMA-US/days/someday").status_code == 422

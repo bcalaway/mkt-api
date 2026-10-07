@@ -355,6 +355,65 @@
         "title": "CalendarOut",
         "type": "object"
       },
+      "CalendarSourceOut": {
+        "properties": {
+          "first_year": {
+            "title": "First Year",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_year": {
+            "title": "Last Year",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "years": {
+            "title": "Years",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "rank",
+          "years",
+          "first_year",
+          "last_year"
+        ],
+        "title": "CalendarSourceOut",
+        "type": "object"
+      },
+      "CalendarSourcesResponse": {
+        "properties": {
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarSourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calendar",
+          "sources"
+        ],
+        "title": "CalendarSourcesResponse",
+        "type": "object"
+      },
       "CalendarYearOut": {
         "properties": {
           "calendar": {
@@ -435,6 +494,10 @@
             "title": "Projected",
             "type": "boolean"
           },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -445,7 +508,8 @@
           "status",
           "holiday",
           "close_time",
-          "projected"
+          "projected",
+          "source"
         ],
         "title": "CloseOut",
         "type": "object"
@@ -573,6 +637,32 @@
         "title": "CurveResponse",
         "type": "object"
       },
+      "DayHistoryResponse": {
+        "properties": {
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/DayVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calendar",
+          "date",
+          "versions"
+        ],
+        "title": "DayHistoryResponse",
+        "type": "object"
+      },
       "DayLookupResponse": {
         "properties": {
           "calendars": {
@@ -640,6 +730,123 @@
           "projected"
         ],
         "title": "DayOut",
+        "type": "object"
+      },
+      "DayVersionOut": {
+        "properties": {
+          "capture_id": {
+            "title": "Capture Id",
+            "type": "integer"
+          },
+          "close_time": {
+            "title": "Close Time",
+            "type": "string"
+          },
+          "holiday": {
+            "title": "Holiday",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "title": "Valid To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "holiday",
+          "close_time",
+          "source",
+          "capture_id",
+          "valid_from",
+          "valid_to"
+        ],
+        "title": "DayVersionOut",
+        "type": "object"
+      },
+      "DisagreementOut": {
+        "properties": {
+          "calendar_holiday": {
+            "title": "Calendar Holiday",
+            "type": "string"
+          },
+          "calendar_says": {
+            "title": "Calendar Says",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decided_by_higher": {
+            "title": "Decided By Higher",
+            "type": "boolean"
+          },
+          "differs": {
+            "title": "Differs",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_holiday": {
+            "title": "Source Holiday",
+            "type": "string"
+          },
+          "source_says": {
+            "title": "Source Says",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "source",
+          "differs",
+          "source_says",
+          "source_holiday",
+          "calendar_says",
+          "calendar_holiday",
+          "decided_by",
+          "decided_by_higher"
+        ],
+        "title": "DisagreementOut",
+        "type": "object"
+      },
+      "DisagreementsResponse": {
+        "properties": {
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DisagreementOut"
+            },
+            "title": "Days",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calendar",
+          "days"
+        ],
+        "title": "DisagreementsResponse",
         "type": "object"
       },
       "EventOut": {
@@ -1835,6 +2042,136 @@
           }
         },
         "summary": "Upcoming Closes"
+      }
+    },
+    "/api/calendars/{name}/days/{day}": {
+      "get": {
+        "description": "Every version of a day on one calendar, oldest first: how its status changed and which source said so.",
+        "operationId": "calendarDayHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar Day History"
+      }
+    },
+    "/api/calendars/{name}/disagreements": {
+      "get": {
+        "description": "Days where a source says something other than the calendar, because another source decided them. calendar-svc\nreads mkt-data's current rows for this, so it takes a few seconds.",
+        "operationId": "calendarDisagreements",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisagreementsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar Disagreements"
+      }
+    },
+    "/api/calendars/{name}/sources": {
+      "get": {
+        "description": "A calendar's sources in precedence order, with the years each is credited for.",
+        "operationId": "calendarSources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSourcesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar Sources"
       }
     },
     "/api/calendars/{name}/{year}": {
