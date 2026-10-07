@@ -1,4 +1,4 @@
-"""Stand-ins for secmaster-svc, quote-svc and mkt-data (app/upstream.py)."""
+"""Stand-ins for secmaster-svc, quote-svc, mkt-data and calendar-svc (app/upstream.py)."""
 
 from decimal import Decimal
 
@@ -6,12 +6,16 @@ from app.upstream import (
     AuctionRow,
     Bar,
     Bars,
+    CalendarInfo,
+    Close,
+    DayAnswer,
     Identifier,
     Instrument,
     Latest,
     Note,
     NotFound,
     OnTheRun,
+    OutOfRange,
     PeriodYear,
     Point,
     Security,
@@ -21,6 +25,7 @@ from app.upstream import (
     SourceCheck,
     SourceDetail,
     SourceState,
+    YearCoverage,
 )
 
 TWO = Instrument(2, "UST-2Y-CMT", "P2Y", "US Treasury 2-year constant maturity yield", type="cmt_yield",
@@ -163,3 +168,41 @@ class FakeSources:
             SourceCheck(9, "2026-10-07T23:16:00+00:00", "error", 0, "2026-10-07", "HTTP 503 from FedInvest"),
             SourceCheck(8, "2026-10-06T23:16:00+00:00", "new", 8099, "2026-10-06", "", "ok")],
             [PeriodYear("2025", 250, 252, 27_000_000), PeriodYear("2026", 190, 200, 21_000_000)])
+
+
+# Two calendars from 2026-10-03 (the tests' today, a Saturday): Columbus Day closes SIFMA-US but not FED... and both
+# close on Veterans Day; SIFMA-US closes early the day after Thanksgiving.
+CLOSES = {
+    "SIFMA-US": [Close("2026-10-12", "closed", "Columbus Day"), Close("2026-11-11", "closed", "Veterans Day"),
+                 Close("2026-11-27", "early_close", "Day after Thanksgiving", "14:00")],
+    "FED": [Close("2026-11-11", "closed", "Veterans Day"), Close("2027-10-11", "closed", "Columbus Day", projected=True)],
+}
+COVER = {
+    "SIFMA-US": [YearCoverage(2025, "SIFMA-US-ARCHIVE", "published"), YearCoverage(2026, "SIFMA-US", "published"),
+                 YearCoverage(2027, "SIFMA-US-RULES", "rules")],
+    "FED": [YearCoverage(2026, "FED-K8", "published"), YearCoverage(2027, "FED-RULES", "projected")],
+}
+
+
+class FakeCalendars:
+    def __init__(self):
+        self.calls = []
+
+    def list_calendars(self):
+        return [CalendarInfo("FED", "Federal Reserve holidays", "America/New_York", 2026, 2027),
+                CalendarInfo("SIFMA-US", "SIFMA US bond market", "America/New_York", 2025, 2027)]
+
+    def closes(self, calendar, start, end):
+        self.calls.append(("closes", calendar, start, end))
+        return [c for c in CLOSES[calendar] if start <= c.date <= end]
+
+    def coverage(self, calendar):
+        return COVER[calendar]
+
+    def business_day(self, calendar, on):
+        if on.startswith("2025") and calendar == "FED":
+            raise OutOfRange("FED covers 2026 to 2027")
+        c = next((c for c in CLOSES[calendar] if c.date == on), None)
+        if c:
+            return DayAnswer(calendar, on, c.status == "early_close", c.status, c.holiday, c.close_time, c.projected)
+        return DayAnswer(calendar, on, True, "open")

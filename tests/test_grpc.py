@@ -9,6 +9,8 @@ import grpc
 import pytest
 
 from app.grpc_gen import (
+    calendars_pb2,
+    calendars_pb2_grpc,
     quotes_pb2,
     quotes_pb2_grpc,
     securities_pb2,
@@ -16,7 +18,15 @@ from app.grpc_gen import (
     source_status_pb2,
     source_status_pb2_grpc,
 )
-from app.upstream import GrpcQuotes, GrpcSecurities, GrpcSources, NotFound, UpstreamError
+from app.upstream import (
+    GrpcCalendars,
+    GrpcQuotes,
+    GrpcSecurities,
+    GrpcSources,
+    NotFound,
+    OutOfRange,
+    UpstreamError,
+)
 
 TEN = securities_pb2.Instrument(
     sec_id=10, short_name="UST-10Y-CMT", tenor="P10Y", description="10-year", status="active", type="cmt_yield",
@@ -75,12 +85,33 @@ class SourceStatus(source_status_pb2_grpc.SourceStatusServicer):
             years=[source_status_pb2.PeriodYear(year="2026", periods=3, captures=3, capture_bytes=300)])
 
 
+class Calendars(calendars_pb2_grpc.CalendarsServicer):
+    def ListCalendars(self, request, context):
+        return calendars_pb2.ListCalendarsResponse(calendars=[calendars_pb2.CalendarInfo(
+            name="SIFMA-US", timezone="America/New_York", first_year=1990, last_year=2100)])
+
+    def Closes(self, request, context):
+        return calendars_pb2.ClosesResponse(calendar=request.calendar, closes=[calendars_pb2.Close(
+            date="2026-10-12", status="closed", holiday="Columbus Day")])
+
+    def Coverage(self, request, context):
+        return calendars_pb2.CoverageResponse(calendar=request.calendar, years=[calendars_pb2.YearCoverage(
+            year=2026, source="SIFMA-US", kind="published")])
+
+    def BusinessDay(self, request, context):
+        if request.date < "1990":
+            context.abort(grpc.StatusCode.OUT_OF_RANGE, "no source covers that year")
+        return calendars_pb2.BusinessDayResponse(calendar=request.calendar, date=request.date, business_day=True,
+                                                 status="open")
+
+
 @pytest.fixture
 def target():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
     securities_pb2_grpc.add_SecuritiesServicer_to_server(Securities(), server)
     quotes_pb2_grpc.add_QuotesServicer_to_server(Quotes(), server)
     source_status_pb2_grpc.add_SourceStatusServicer_to_server(SourceStatus(), server)
+    calendars_pb2_grpc.add_CalendarsServicer_to_server(Calendars(), server)
     port = server.add_insecure_port("localhost:0")
     server.start()
     yield f"localhost:{port}"
@@ -128,3 +159,13 @@ def test_sources(target):
     assert d.source.latest_capture_id == 9 and d.checks[0].capture_id == 9 and d.years[0].capture_bytes == 300
     with pytest.raises(NotFound):
         src.get_source("NOPE", 5)
+
+
+def test_calendars(target):
+    cal = GrpcCalendars(target)
+    assert [(c.name, c.last_year) for c in cal.list_calendars()] == [("SIFMA-US", 2100)]
+    assert cal.closes("SIFMA-US", "2026-10-01", "2026-10-31")[0].holiday == "Columbus Day"
+    assert cal.coverage("SIFMA-US")[0].kind == "published"
+    assert cal.business_day("SIFMA-US", "2026-10-13").status == "open"
+    with pytest.raises(OutOfRange):
+        cal.business_day("SIFMA-US", "1980-01-02")
