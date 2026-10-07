@@ -1,8 +1,8 @@
-"""What mkt-api reads: secmaster-svc's instruments and quote-svc's quotes, over gRPC.
+"""What mkt-api reads: secmaster-svc's instruments, quote-svc's quotes and mkt-data's sources, over gRPC.
 
-`Securities` and `Quotes` are the interfaces the API uses; the Grpc* classes
-talk to the real services (proto/securities.proto and proto/quotes.proto,
-copied from those repos). Tests use fakes with the same methods. Answers are
+`Securities`, `Quotes` and `Sources` are the interfaces the API uses; the
+Grpc* classes talk to the real services (proto/securities.proto,
+proto/quotes.proto and proto/source_status.proto, copied from those repos). Tests use fakes with the same methods. Answers are
 plain dataclasses, values as the decimal strings quote-svc sends.
 
 Each call opens a channel and closes it: a handful of calls per page, on the
@@ -162,6 +162,61 @@ class AuctionRow:
     fields: dict[str, str]  # cusip, security_type, term, reopening, auction_date, offering_amount, high_yield, ...
 
 
+@dataclass(frozen=True)
+class SourceState:
+    """One source mkt-data captures, with how its captures are going (mkt-data's SourceStatus)."""
+
+    name: str
+    group: str = ""  # calendars | rates | securities
+    calendar: str = ""
+    kind: str = ""  # published | rules | projected
+    period_kind: str = ""  # day | month | year; "" for a one-page source
+    url: str = ""
+    description: str = ""
+    parsed: bool = False
+    captures: int = 0
+    capture_bytes: int = 0
+    latest_capture_id: int = 0
+    latest_capture_at: str = ""
+    last_success_at: str = ""
+    last_check_at: str = ""
+    last_outcome: str = ""  # new | unchanged | error | reparse
+    last_parse_outcome: str = ""  # ok | error | ""
+    last_error: str = ""
+    checks_7d: int = 0
+    errors_7d: int = 0
+    periods: int = 0
+    first_period: str = ""
+    last_period: str = ""
+
+
+@dataclass(frozen=True)
+class SourceCheck:
+    id: int
+    checked_at: str
+    outcome: str
+    capture_id: int = 0
+    period: str = ""
+    detail: str = ""
+    parse_outcome: str = ""
+    parse_detail: str = ""
+
+
+@dataclass(frozen=True)
+class PeriodYear:
+    year: str
+    periods: int
+    captures: int
+    capture_bytes: int
+
+
+@dataclass(frozen=True)
+class SourceDetail:
+    source: SourceState
+    checks: list[SourceCheck]
+    years: list[PeriodYear]
+
+
 class Securities(Protocol):
     def list_instruments(self) -> list[Instrument]: ...
     def get_instrument(self, name: str) -> Instrument: ...  # NotFound
@@ -177,6 +232,11 @@ class Quotes(Protocol):
     def bars(self, sec_ids: list[int], start: str, end: str, interval: str, source: str = "",
              field: str = "yield") -> list[Bars]: ...
     def latest(self, sec_ids: list[int], field: str = "yield") -> list[Latest]: ...
+
+
+class Sources(Protocol):
+    def list_sources(self) -> list[SourceState]: ...
+    def get_source(self, name: str, checks: int = 0) -> SourceDetail: ...  # NotFound
 
 
 def _instrument(m) -> Instrument:
@@ -295,3 +355,32 @@ class GrpcQuotes(_Grpc):
 
         r = self._call(self._stub, "GetLatest", pb.GetLatestRequest(sec_ids=sec_ids, field=field))
         return [Latest(x.sec_id, x.as_of, x.value, x.source) for x in r.latest]
+
+
+def _state(m) -> SourceState:
+    return SourceState(**{f: getattr(m, f) for f in SourceState.__dataclass_fields__})
+
+
+class GrpcSources(_Grpc):
+    def __init__(self, target: str | None = None):
+        self.target = target or settings.mkt_data_grpc
+
+    def _stub(self, channel):
+        from app.grpc_gen import source_status_pb2_grpc
+
+        return source_status_pb2_grpc.SourceStatusStub(channel)
+
+    def list_sources(self) -> list[SourceState]:
+        from app.grpc_gen import source_status_pb2 as pb
+
+        r = self._call(self._stub, "ListSourceStatus", pb.ListSourceStatusRequest())
+        return [_state(x) for x in r.sources]
+
+    def get_source(self, name: str, checks: int = 0) -> SourceDetail:
+        from app.grpc_gen import source_status_pb2 as pb
+
+        r = self._call(self._stub, "GetSourceStatus", pb.GetSourceStatusRequest(source=name, checks=checks))
+        return SourceDetail(
+            source=_state(r.source),
+            checks=[SourceCheck(**{f: getattr(c, f) for f in SourceCheck.__dataclass_fields__}) for c in r.checks],
+            years=[PeriodYear(y.year, y.periods, y.captures, y.capture_bytes) for y in r.years])

@@ -10,7 +10,7 @@ from app import api
 from app.main import app
 from app.openapi import schema_text
 from app.upstream import UpstreamError
-from tests.fakes import FakeQuotes, FakeSecurities
+from tests.fakes import FakeQuotes, FakeSecurities, FakeSources
 
 ROOT = Path(__file__).resolve().parent.parent
 client = TestClient(app)
@@ -276,3 +276,17 @@ def test_the_auction_calendar_defaults_to_this_week(fakes):
     assert bill["held"] and bill["high_discount_rate_display"] == "3.805" and bill["bid_to_cover"] == "2.87"
     assert not note["held"] and note["reopening"] and note["high_yield_display"] == ""
     assert client.get("/api/auctions", params={"start": "2026-10-09", "end": "2026-10-05"}).status_code == 422
+
+
+def test_sources():
+    src = FakeSources()
+    app.dependency_overrides[api.sources] = lambda: src
+    rows = {r["name"]: r for r in client.get("/api/sources").json()["sources"]}
+    assert {n: r["status"] for n, r in rows.items()} == {"FED-K8": "ok", "TD-PRICES": "error", "NYSE-RULES": "never"}
+    assert rows["TD-PRICES"]["last_error"] == "HTTP 503 from FedInvest" and rows["TD-PRICES"]["periods"] == 4700
+    one = client.get("/api/sources/td-prices", params={"checks": 2}).json()
+    assert src.calls == [("get", "TD-PRICES", 2)]
+    assert [c["outcome"] for c in one["checks"]] == ["error", "new"] and one["source"]["status"] == "error"
+    assert [y["year"] for y in one["years"]] == ["2025", "2026"]
+    assert client.get("/api/sources/NOPE").status_code == 404
+    assert client.get("/api/sources/TD-PRICES", params={"checks": 0}).status_code == 422

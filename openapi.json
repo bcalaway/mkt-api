@@ -708,6 +708,34 @@
         "title": "OnTheRunOut",
         "type": "object"
       },
+      "PeriodYearOut": {
+        "properties": {
+          "capture_bytes": {
+            "title": "Capture Bytes",
+            "type": "integer"
+          },
+          "captures": {
+            "title": "Captures",
+            "type": "integer"
+          },
+          "periods": {
+            "title": "Periods",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "string"
+          }
+        },
+        "required": [
+          "year",
+          "periods",
+          "captures",
+          "capture_bytes"
+        ],
+        "title": "PeriodYearOut",
+        "type": "object"
+      },
       "PriceOut": {
         "properties": {
           "date": {
@@ -982,6 +1010,221 @@
           "price"
         ],
         "title": "SecurityRow",
+        "type": "object"
+      },
+      "SourceCheckOut": {
+        "properties": {
+          "capture_id": {
+            "title": "Capture Id",
+            "type": "integer"
+          },
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "parse_detail": {
+            "title": "Parse Detail",
+            "type": "string"
+          },
+          "parse_outcome": {
+            "title": "Parse Outcome",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "checked_at",
+          "outcome",
+          "capture_id",
+          "period",
+          "detail",
+          "parse_outcome",
+          "parse_detail"
+        ],
+        "title": "SourceCheckOut",
+        "type": "object"
+      },
+      "SourceDetailOut": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SourceCheckOut"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceOut"
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodYearOut"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "checks",
+          "years"
+        ],
+        "title": "SourceDetailOut",
+        "type": "object"
+      },
+      "SourceOut": {
+        "properties": {
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "capture_bytes": {
+            "title": "Capture Bytes",
+            "type": "integer"
+          },
+          "captures": {
+            "title": "Captures",
+            "type": "integer"
+          },
+          "checks_7d": {
+            "title": "Checks 7D",
+            "type": "integer"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "errors_7d": {
+            "title": "Errors 7D",
+            "type": "integer"
+          },
+          "first_period": {
+            "title": "First Period",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_check_at": {
+            "title": "Last Check At",
+            "type": "string"
+          },
+          "last_error": {
+            "title": "Last Error",
+            "type": "string"
+          },
+          "last_outcome": {
+            "title": "Last Outcome",
+            "type": "string"
+          },
+          "last_parse_outcome": {
+            "title": "Last Parse Outcome",
+            "type": "string"
+          },
+          "last_period": {
+            "title": "Last Period",
+            "type": "string"
+          },
+          "last_success_at": {
+            "title": "Last Success At",
+            "type": "string"
+          },
+          "latest_capture_at": {
+            "title": "Latest Capture At",
+            "type": "string"
+          },
+          "latest_capture_id": {
+            "title": "Latest Capture Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parsed": {
+            "title": "Parsed",
+            "type": "boolean"
+          },
+          "period_kind": {
+            "title": "Period Kind",
+            "type": "string"
+          },
+          "periods": {
+            "title": "Periods",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "group",
+          "calendar",
+          "kind",
+          "period_kind",
+          "url",
+          "description",
+          "parsed",
+          "status",
+          "captures",
+          "capture_bytes",
+          "latest_capture_id",
+          "latest_capture_at",
+          "last_success_at",
+          "last_check_at",
+          "last_outcome",
+          "last_parse_outcome",
+          "last_error",
+          "checks_7d",
+          "errors_7d",
+          "periods",
+          "first_period",
+          "last_period"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "SourcesResponse": {
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "title": "SourcesResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -1589,6 +1832,77 @@
           }
         },
         "summary": "Get Security"
+      }
+    },
+    "/api/sources": {
+      "get": {
+        "description": "Every source mkt-data captures (calendar pages, CMT yields, Treasury securities), with how its captures\nare going: the latest fetch and parse, errors in the last week, what's stored and the periods it covers.",
+        "operationId": "listSources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sources"
+      }
+    },
+    "/api/sources/{name}": {
+      "get": {
+        "description": "One source: its status, its newest fetch attempts and reparses, and (fetched by period) its periods by year.",
+        "operationId": "getSource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "checks",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Checks",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source"
       }
     }
   }
