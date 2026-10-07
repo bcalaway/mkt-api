@@ -155,6 +155,13 @@ class Security:
     strip: dict[str, str]
 
 
+@dataclass(frozen=True)
+class AuctionRow:
+    sec_id: int
+    short_name: str
+    fields: dict[str, str]  # cusip, security_type, term, reopening, auction_date, offering_amount, high_yield, ...
+
+
 class Securities(Protocol):
     def list_instruments(self) -> list[Instrument]: ...
     def get_instrument(self, name: str) -> Instrument: ...  # NotFound
@@ -162,6 +169,7 @@ class Securities(Protocol):
     def list_securities(self, security_type: str = "", include_inactive: bool = False, maturing_from: str = "",
                         maturing_to: str = "", as_of: str = "", limit: int = 0) -> SecurityList: ...
     def get_security(self, name: str, as_of: str = "") -> Security: ...  # NotFound
+    def list_auctions(self, start: str, end: str, limit: int = 0) -> list[AuctionRow]: ...
 
 
 class Quotes(Protocol):
@@ -249,6 +257,12 @@ class GrpcSecurities(_Grpc):
             checks=list(r.checks), auctions=[dict(a.fields) for a in r.auctions],
             on_the_run=[OnTheRun(o.alias, o.since, o.until) for o in r.on_the_run],
             index_ratio=dict(r.index_ratio), strip=dict(r.strip))
+
+    def list_auctions(self, start: str, end: str, limit: int = 0) -> list[AuctionRow]:
+        from app.grpc_gen import securities_pb2 as pb
+
+        r = self._call(self._stub, "ListAuctions", pb.ListAuctionsRequest(start=start, end=end, limit=limit))
+        return [AuctionRow(a.sec_id, a.short_name, dict(a.fields)) for a in r.auctions]
 
 
 class GrpcQuotes(_Grpc):
