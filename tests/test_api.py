@@ -231,3 +231,37 @@ def schema_text_paths():
     import json
 
     return json.loads(schema_text())["paths"].keys()
+
+
+# --- Treasury securities (phase 3, step 9) ---
+
+def test_securities_list_outstanding_with_latest_price(fakes):
+    _ = fakes
+    out = client.get("/api/securities").json()
+    assert out["total"] == 1 and [s["name"] for s in out["securities"]] == ["UST-4.25-2035-08-15"]
+    note = out["securities"][0]
+    assert (note["coupon"], note["coupon_display"], note["on_the_run"]) == ("0.0425", "4.25", ["UST-10Y-OTR"])
+    assert note["price"] == {"date": "2026-10-01", "value": "99.828125", "display": "99.828125", "source": "TD-PRICES"}
+    assert "sec_id" not in str(out)
+    every = client.get("/api/securities", params={"include_inactive": True, "type": "bill"}).json()
+    assert [s["name"] for s in every["securities"]] == ["UST-B-2026-01-02"] and every["securities"][0]["price"] is None
+    assert client.get("/api/securities", params={"type": "swap"}).status_code == 422
+
+
+def test_a_security_in_full(fakes):
+    d = client.get("/api/securities/ust-10y-otr").json()
+    assert d["name"] == "UST-4.25-2035-08-15" and d["terms"]["cusip"] == "91282CNC1"
+    assert d["provenance"]["coupon_rate"].startswith("published") and d["auctions"][0]["auction_date"] == "2025-08-06"
+    assert d["on_the_run"] == [{"alias": "UST-10Y-OTR", "since": "2025-08-06", "until": None}]
+    assert d["index_ratio"] is None and d["price"]["display"] == "99.828125"
+    assert client.get("/api/securities/UST-10Y-CMT").status_code == 404
+
+
+def test_a_security_charts_its_price(fakes):
+    _, quo = fakes
+    out = client.get("/api/bars", params={"series": "UST-4.25-2035-08-15", "interval": "day", "block": "2026"}).json()
+    [s] = out["series"]
+    assert s["unit"] == "price" and [b["close_display"] for b in s["bars"]] == ["99.500", "99.828125"]
+    assert ("series", (500,), "2026-01-01", "2026-10-03", "", "price") in quo.calls
+    inst = client.get("/api/instruments/UST-4.25-2035-08-15").json()
+    assert inst["latest"]["display"] == "99.828125"

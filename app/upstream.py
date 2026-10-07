@@ -106,16 +106,69 @@ class Latest:
     source: str
 
 
+@dataclass(frozen=True)
+class SecuritySummary:
+    """A Treasury security as a list shows it (secmaster-svc's ListSecurities)."""
+
+    sec_id: int
+    short_name: str
+    cusip: str
+    security_type: str  # bill, note, bond, tips, frn
+    cmb: bool = False
+    term: str = ""
+    original_term: str = ""
+    coupon_rate: str = ""  # decimal, "0.0425"; "" for bills and FRNs
+    frn_spread: str = ""
+    issue_date: str = ""
+    dated_date: str = ""
+    maturity_date: str = ""
+    status: str = ""
+    description: str = ""
+    on_the_run: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SecurityList:
+    as_of: str
+    total: int
+    securities: list[SecuritySummary]
+
+
+@dataclass(frozen=True)
+class OnTheRun:
+    alias: str
+    since: str = ""
+    until: str = ""
+
+
+@dataclass(frozen=True)
+class Security:
+    """One Treasury security in full (secmaster-svc's GetSecurity): terms and auctions as text maps."""
+
+    instrument: Instrument
+    terms: dict[str, str]
+    provenance: dict[str, str]
+    checks: list[str]
+    auctions: list[dict[str, str]]
+    on_the_run: list[OnTheRun]
+    index_ratio: dict[str, str]
+    strip: dict[str, str]
+
+
 class Securities(Protocol):
     def list_instruments(self) -> list[Instrument]: ...
     def get_instrument(self, name: str) -> Instrument: ...  # NotFound
     def search(self, query: str, limit: int) -> list[Instrument]: ...
+    def list_securities(self, security_type: str = "", include_inactive: bool = False, maturing_from: str = "",
+                        maturing_to: str = "", as_of: str = "", limit: int = 0) -> SecurityList: ...
+    def get_security(self, name: str, as_of: str = "") -> Security: ...  # NotFound
 
 
 class Quotes(Protocol):
-    def series(self, sec_ids: list[int], start: str, end: str, source: str = "") -> list[Series]: ...
-    def bars(self, sec_ids: list[int], start: str, end: str, interval: str, source: str = "") -> list[Bars]: ...
-    def latest(self, sec_ids: list[int]) -> list[Latest]: ...
+    def series(self, sec_ids: list[int], start: str, end: str, source: str = "", field: str = "yield") -> list[Series]: ...
+    def bars(self, sec_ids: list[int], start: str, end: str, interval: str, source: str = "",
+             field: str = "yield") -> list[Bars]: ...
+    def latest(self, sec_ids: list[int], field: str = "yield") -> list[Latest]: ...
 
 
 def _instrument(m) -> Instrument:
@@ -174,6 +227,29 @@ class GrpcSecurities(_Grpc):
         r = self._call(self._stub, "Search", pb.SearchRequest(query=query, limit=limit))
         return [_instrument(i) for i in r.instruments]
 
+    def list_securities(self, security_type: str = "", include_inactive: bool = False, maturing_from: str = "",
+                        maturing_to: str = "", as_of: str = "", limit: int = 0) -> SecurityList:
+        from app.grpc_gen import securities_pb2 as pb
+
+        r = self._call(self._stub, "ListSecurities", pb.ListSecuritiesRequest(
+            security_type=security_type, include_inactive=include_inactive, maturing_from=maturing_from,
+            maturing_to=maturing_to, as_of=as_of, limit=limit))
+        return SecurityList(r.as_of, r.total, [SecuritySummary(
+            sec_id=x.sec_id, short_name=x.short_name, cusip=x.cusip, security_type=x.security_type, cmb=x.cmb,
+            term=x.term, original_term=x.original_term, coupon_rate=x.coupon_rate, frn_spread=x.frn_spread,
+            issue_date=x.issue_date, dated_date=x.dated_date, maturity_date=x.maturity_date, status=x.status,
+            description=x.description, on_the_run=tuple(x.on_the_run)) for x in r.securities])
+
+    def get_security(self, name: str, as_of: str = "") -> Security:
+        from app.grpc_gen import securities_pb2 as pb
+
+        r = self._call(self._stub, "GetSecurity", pb.GetSecurityRequest(name=name, as_of=as_of))
+        return Security(
+            instrument=_instrument(r.instrument), terms=dict(r.terms), provenance=dict(r.provenance),
+            checks=list(r.checks), auctions=[dict(a.fields) for a in r.auctions],
+            on_the_run=[OnTheRun(o.alias, o.since, o.until) for o in r.on_the_run],
+            index_ratio=dict(r.index_ratio), strip=dict(r.strip))
+
 
 class GrpcQuotes(_Grpc):
     def __init__(self, target: str | None = None):
@@ -184,23 +260,24 @@ class GrpcQuotes(_Grpc):
 
         return quotes_pb2_grpc.QuotesStub(channel)
 
-    def series(self, sec_ids: list[int], start: str, end: str, source: str = "") -> list[Series]:
+    def series(self, sec_ids: list[int], start: str, end: str, source: str = "", field: str = "yield") -> list[Series]:
         from app.grpc_gen import quotes_pb2 as pb
 
         r = self._call(self._stub, "GetSeries", pb.GetSeriesRequest(
-            sec_ids=sec_ids, start=start, end=end, field="yield", source=source))
+            sec_ids=sec_ids, start=start, end=end, field=field, source=source))
         return [Series(s.sec_id, [Point(p.as_of, p.value, p.source) for p in s.points]) for s in r.series]
 
-    def bars(self, sec_ids: list[int], start: str, end: str, interval: str, source: str = "") -> list[Bars]:
+    def bars(self, sec_ids: list[int], start: str, end: str, interval: str, source: str = "",
+             field: str = "yield") -> list[Bars]:
         from app.grpc_gen import quotes_pb2 as pb
 
         r = self._call(self._stub, "GetBars", pb.GetBarsRequest(
-            sec_ids=sec_ids, start=start, end=end, interval=interval, field="yield", source=source))
+            sec_ids=sec_ids, start=start, end=end, interval=interval, field=field, source=source))
         return [Bars(s.sec_id, [Bar(b.start, b.last, b.open, b.high, b.low, b.close, b.source) for b in s.bars])
                 for s in r.series]
 
-    def latest(self, sec_ids: list[int]) -> list[Latest]:
+    def latest(self, sec_ids: list[int], field: str = "yield") -> list[Latest]:
         from app.grpc_gen import quotes_pb2 as pb
 
-        r = self._call(self._stub, "GetLatest", pb.GetLatestRequest(sec_ids=sec_ids, field="yield"))
+        r = self._call(self._stub, "GetLatest", pb.GetLatestRequest(sec_ids=sec_ids, field=field))
         return [Latest(x.sec_id, x.as_of, x.value, x.source) for x in r.latest]

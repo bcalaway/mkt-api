@@ -2,7 +2,21 @@
 
 from decimal import Decimal
 
-from app.upstream import Bar, Bars, Identifier, Instrument, Latest, Note, NotFound, Point, Series
+from app.upstream import (
+    Bar,
+    Bars,
+    Identifier,
+    Instrument,
+    Latest,
+    Note,
+    NotFound,
+    OnTheRun,
+    Point,
+    Security,
+    SecurityList,
+    SecuritySummary,
+    Series,
+)
 
 TWO = Instrument(2, "UST-2Y-CMT", "P2Y", "US Treasury 2-year constant maturity yield", type="cmt_yield",
                  currency="USD", country="US", curve="UST", calendar="SIFMA-US",
@@ -17,7 +31,11 @@ SIX_WEEK = Instrument(1, "UST-1.5M-CMT", "P6W", "US Treasury 1.5-month constant 
                       aliases=("UST-6W-CMT",), type="cmt_yield")
 # A Treasury security: priced, not on the curve.
 NOTE = Instrument(500, "UST-4.25-2035-08-15", "", "US Treasury note 4.25% due 2035-08-15", type="ust_note",
-                  aliases=("UST-10Y-OTR",))
+                  aliases=("UST-10Y-OTR",), identifiers=(Identifier("CUSIP", "91282CNC1"),))
+MATURED = SecuritySummary(501, "UST-B-2026-01-02", "912797AA1", "bill", maturity_date="2026-01-02", status="matured")
+NOTE_ROW = SecuritySummary(500, "UST-4.25-2035-08-15", "91282CNC1", "note", term="10-Year", original_term="10-Year",
+                           coupon_rate="0.0425", issue_date="2025-08-15", maturity_date="2035-08-15", status="active",
+                           on_the_run=("UST-10Y-OTR",))
 ALL = [SIX_WEEK, TWO, TEN, NOTE]
 
 # sec_id -> date -> (value, source)
@@ -27,6 +45,8 @@ QUOTES = {
          "2026-10-02": ("0.041", "H15-TCM")},
     1: {"2026-10-02": ("0.04", "UST-PAR")},
 }
+# FedInvest end-of-day prices, per 100: sec_id -> date -> (value, source)
+PRICES = {500: {"2026-09-30": ("99.5", "TD-PRICES"), "2026-10-01": ("99.828125", "TD-PRICES")}}
 
 
 class FakeSecurities:
@@ -47,32 +67,50 @@ class FakeSecurities:
     def search(self, query, limit):
         return [i for i in ALL if query.upper() in i.short_name.upper()][:limit]
 
+    def list_securities(self, security_type="", include_inactive=False, maturing_from="", maturing_to="", as_of="",
+                        limit=0):
+        self.calls.append(("list_securities", security_type, include_inactive, maturing_from, maturing_to, limit))
+        rows = [r for r in (MATURED, NOTE_ROW) if include_inactive or r.status == "active"]
+        rows = [r for r in rows if not security_type or r.security_type == security_type]
+        return SecurityList("2026-10-03", len(rows), rows[:limit or 1000])
+
+    def get_security(self, name, as_of=""):
+        if name.upper() not in ("UST-4.25-2035-08-15", "UST-10Y-OTR", "91282CNC1"):
+            raise NotFound(f"no security {name}")
+        return Security(instrument=NOTE, terms={"cusip": "91282CNC1", "coupon_rate": "0.0425"},
+                        provenance={"coupon_rate": "published: TD-SECURITIES 91282CNC1/2025-08-15 interestRate"},
+                        checks=[], auctions=[{"auction_date": "2025-08-06", "reopening": "false"}],
+                        on_the_run=[OnTheRun("UST-10Y-OTR", "2025-08-06", "")], index_ratio={}, strip={})
+
 
 class FakeQuotes:
     def __init__(self):
         self.calls = []
 
-    def series(self, sec_ids, start, end, source=""):
-        self.calls.append(("series", tuple(sec_ids), start, end, source))
-        return [Series(i, [Point(d, v, s) for d, (v, s) in sorted(QUOTES.get(i, {}).items()) if start <= d <= end])
+    def series(self, sec_ids, start, end, source="", field="yield"):
+        self.calls.append(("series", tuple(sec_ids), start, end, source) + ((field,) if field != "yield" else ()))
+        data = PRICES if field == "price" else QUOTES
+        return [Series(i, [Point(d, v, s) for d, (v, s) in sorted(data.get(i, {}).items()) if start <= d <= end])
                 for i in sec_ids]
 
-    def bars(self, sec_ids, start, end, interval, source=""):
+    def bars(self, sec_ids, start, end, interval, source="", field="yield"):
         """As quote-svc's GetBars does it, using the same period rules as mkt-api's own (spread) bars."""
         from app.api import bars
 
-        self.calls.append(("bars", tuple(sec_ids), start, end, interval, source))
+        self.calls.append(("bars", tuple(sec_ids), start, end, interval, source) + ((field,) if field != "yield" else ()))
+        data = PRICES if field == "price" else QUOTES
         out = []
         for i in sec_ids:
-            daily = [(d, Decimal(v), s) for d, (v, s) in sorted(QUOTES.get(i, {}).items()) if start <= d <= end]
+            daily = [(d, Decimal(v), s) for d, (v, s) in sorted(data.get(i, {}).items()) if start <= d <= end]
             out.append(Bars(i, [Bar(b["date"], b["last"], str(b["open"]), str(b["high"]), str(b["low"]),
                                     str(b["close"]), b["extra"]) for b in bars(daily, interval)]))
         return out
 
-    def latest(self, sec_ids):
+    def latest(self, sec_ids, field="yield"):
+        self.calls.append(("latest", tuple(sec_ids), field))
         out = []
         for i in sec_ids:
-            days = QUOTES.get(i, {})
+            days = (PRICES if field == "price" else QUOTES).get(i, {})
             d = max(days, default="")
             out.append(Latest(i, d, *(days[d] if d else ("", ""))))
         return out

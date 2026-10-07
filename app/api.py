@@ -24,7 +24,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from app import blocks
-from app.upstream import GrpcQuotes, GrpcSecurities, Instrument, NotFound, Quotes, Securities, UpstreamError
+from app.upstream import (
+    GrpcQuotes,
+    GrpcSecurities,
+    Instrument,
+    NotFound,
+    Quotes,
+    Securities,
+    SecuritySummary,
+    UpstreamError,
+)
 
 router = APIRouter(prefix="/api")
 NEW_YORK = ZoneInfo("America/New_York")
@@ -84,8 +93,27 @@ def bp(value: Decimal | str) -> str:
 
 
 def display(value: Decimal | str, unit: str) -> str:
-    """A decimal in its unit's display form: percent ("4.10") or basis points ("52")."""
+    """A decimal in its unit's display form: percent ("4.10"), basis points ("52") or a price per 100 ("99.875")."""
+    if unit == "price":
+        return price(str(value))
     return percent(str(value)) if unit == "%" else bp(value)
+
+
+def price(value: str) -> str:
+    """A price per 100 as printed, with at least three places: "100" -> "100.000", "99.828125" stays."""
+    p = Decimal(value).normalize()
+    if p.as_tuple().exponent > -3:
+        p = p.quantize(Decimal("0.001"))
+    return format(p, "f")
+
+
+# Treasury securities (types ust_bill, ust_note, ...) have prices, not yields: FedInvest's end of day.
+SECURITY_PREFIX = "ust_"
+
+
+def field_of(i: Instrument) -> str:
+    """The quote field an instrument's chart and latest value use."""
+    return "price" if i.type.startswith(SECURITY_PREFIX) else "yield"
 
 
 def percent(value: str) -> str:
@@ -179,8 +207,8 @@ class NoteOut(BaseModel):
 
 class LatestOut(BaseModel):
     date: str
-    value: str  # the rate as a decimal: "0.041"
-    display: str  # in percent: "4.10"
+    value: str  # the rate as a decimal: "0.041"; a Treasury security's price per 100: "99.828125"
+    display: str  # in percent: "4.10"; a price with at least three places: "99.828125", "100.000"
     source: str
 
 
@@ -218,7 +246,7 @@ class CurveResponse(BaseModel):
 class BarOut(BaseModel):
     date: str  # the period's first calendar day (for a day, the day)
     last_date: str  # the day the close is from
-    open: str  # decimals: a yield's rate ("0.041"), a spread's or fly's difference of rates ("0.0052")
+    open: str  # decimals: a yield's rate ("0.041"), a spread's or fly's difference of rates ("0.0052"), a price per 100
     high: str
     low: str
     close: str
@@ -234,7 +262,7 @@ class BarOut(BaseModel):
 class BarSeriesOut(BaseModel):
     key: str  # the series as asked for, with short names: "UST-10Y-CMT", "spread(UST-10Y-CMT,UST-2Y-CMT)"
     label: str  # "UST-10Y-CMT - UST-2Y-CMT"
-    unit: Literal["%", "bp"]  # what the *_display fields are in
+    unit: Literal["%", "bp", "price"]  # what the *_display fields are in: a Treasury security's price per 100
     inputs: list[str]  # the instruments it's made from, by short name
     bars: list[BarOut]
 
@@ -275,8 +303,10 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
     i = _resolve(sec, name)
     if not i.identifiers and not i.notes:
         i = sec.get_instrument(i.short_name)  # the list leaves identifiers and notes out
-    got = [x for x in quo.latest([i.sec_id]) if x.value]
-    latest = LatestOut(date=got[0].as_of, value=got[0].value, display=percent(got[0].value),
+    fld = field_of(i)
+    got = [x for x in quo.latest([i.sec_id], field=fld) if x.value]
+    latest = LatestOut(date=got[0].as_of, value=got[0].value,
+                       display=price(got[0].value) if fld == "price" else percent(got[0].value),
                        source=got[0].source) if got else None
     return InstrumentDetail(
         **_summary(i).model_dump(), currency=i.currency, country=i.country, curve=i.curve,
@@ -321,6 +351,115 @@ def curve(sec: Sec, quo: Quo, date_: Annotated[date | None, Query(alias="date")]
                                             display=percent(p.value), source=p.source))
         curves.append(CurveOut(label=label, requested=day.isoformat(), date=found, points=points, missing=missing))
     return CurveResponse(curves=curves)
+
+
+# --- Treasury securities (mkt-data's docs/phase-3.md, step 9) ---
+
+SecurityType = Literal["bill", "note", "bond", "tips", "frn"]
+
+
+class PriceOut(BaseModel):
+    date: str  # the business day FedInvest priced it
+    value: str  # end of day, per 100 of face, as printed: "99.828125"
+    display: str  # at least three places: "99.828125", "100.000"
+    source: str  # TD-PRICES
+
+
+class SecurityRow(BaseModel):
+    name: str  # UST-4.25-2035-08-15
+    cusip: str
+    type: SecurityType
+    cmb: bool  # a cash management bill
+    term: str  # the auction program: 10-Year, 26-Week
+    original_term: str  # exact: 5-Year 2-Month
+    coupon: str  # decimal: "0.0425"; "" for bills and FRNs
+    coupon_display: str  # percent: "4.25"; ""
+    frn_spread: str  # decimal; FRNs only
+    issue_date: str
+    maturity_date: str
+    status: str  # active, matured, called, withdrawn
+    on_the_run: list[str]  # UST-10Y-OTR, UST-10Y-OTR-ISSUED
+    price: PriceOut | None  # the latest end-of-day price (outstanding securities)
+
+
+class SecurityListResponse(BaseModel):
+    as_of: str  # the day the on-the-run aliases are for
+    total: int  # every security that matches; at most `limit` are listed
+    securities: list[SecurityRow]
+
+
+class OnTheRunOut(BaseModel):
+    alias: str
+    since: str
+    until: str | None
+
+
+class SecurityDetail(BaseModel):
+    name: str
+    aliases: list[str]
+    description: str
+    status: str
+    type: str  # ust_note, ust_tips, ust_strip_principal, ...
+    identifiers: list[IdentifierOut]  # CUSIP, ISIN, FIGI, COMPOSITE-FIGI, TICKER, OTR
+    terms: dict[str, str]  # every stored term, dates ISO, decimals as stored; "" for none
+    provenance: dict[str, str]  # term -> "published: TD-SECURITIES <key> <field>" or "derived: <rule>"
+    checks: list[str]
+    auctions: list[dict[str, str]]  # by issue date: auction_date, issue_date, reopening, offering_amount, high_yield, ...
+    on_the_run: list[OnTheRunOut]
+    index_ratio: dict[str, str] | None  # a TIPS on as_of: ref_cpi, base_cpi, index_ratio, method
+    strip: dict[str, str] | None  # a STRIPS: kind, maturity, underlying
+    price: PriceOut | None
+
+
+def _price(x) -> PriceOut | None:
+    return PriceOut(date=x.as_of, value=x.value, display=price(x.value), source=x.source) if x and x.value else None
+
+
+def _row(x: SecuritySummary, last) -> SecurityRow:
+    return SecurityRow(
+        name=x.short_name, cusip=x.cusip, type=x.security_type, cmb=x.cmb, term=x.term,
+        original_term=x.original_term, coupon=x.coupon_rate,
+        coupon_display=percent(x.coupon_rate) if x.coupon_rate else "", frn_spread=x.frn_spread,
+        issue_date=x.issue_date, maturity_date=x.maturity_date, status=x.status, on_the_run=list(x.on_the_run),
+        price=_price(last),
+    )
+
+
+@router.get("/securities", operation_id="listSecurities", response_model=SecurityListResponse)
+def list_securities(sec: Sec, quo: Quo, type_: Annotated[SecurityType | None, Query(alias="type")] = None,
+                    include_inactive: bool = False, maturing_from: date | None = None,
+                    maturing_to: date | None = None, limit: Annotated[int, Query(ge=1, le=6000)] = 1000):
+    """Treasury securities by maturity: outstanding ones, or all since 1980 with `include_inactive`.
+
+    With their CUSIP, coupon, dates, on-the-run aliases (today) and, for outstanding ones, the latest
+    FedInvest end-of-day price.
+    """
+    got = sec.list_securities(type_ or "", include_inactive, maturing_from.isoformat() if maturing_from else "",
+                              maturing_to.isoformat() if maturing_to else "", "", limit)
+    active = [x.sec_id for x in got.securities if x.status == "active"]
+    last = {x.sec_id: x for x in quo.latest(active, field="price")} if active else {}
+    return SecurityListResponse(as_of=got.as_of, total=got.total,
+                                securities=[_row(x, last.get(x.sec_id)) for x in got.securities])
+
+
+@router.get("/securities/{name}", operation_id="getSecurity", response_model=SecurityDetail)
+def get_security(name: str, sec: Sec, quo: Quo):
+    """One Treasury security by short name, alias, CUSIP or on-the-run name: terms with where each came from,
+    every auction, identifiers, on-the-run aliases, a TIPS's index ratio today, and the latest price."""
+    try:
+        d = sec.get_security(name.strip())
+    except NotFound:
+        raise HTTPException(404, f"no Treasury security named {name!r}") from None
+    i = d.instrument
+    last = quo.latest([i.sec_id], field="price")
+    return SecurityDetail(
+        name=i.short_name, aliases=list(i.aliases), description=i.description, status=i.status, type=i.type,
+        identifiers=[IdentifierOut(scheme=x.scheme, value=x.value, valid_from=x.valid_from or None,
+                                   valid_to=x.valid_to or None) for x in i.identifiers],
+        terms=d.terms, provenance=d.provenance, checks=d.checks, auctions=d.auctions,
+        on_the_run=[OnTheRunOut(alias=o.alias, since=o.since, until=o.until or None) for o in d.on_the_run],
+        index_ratio=d.index_ratio or None, strip=d.strip or None, price=_price(last[0] if last else None),
+    )
 
 
 class EventOut(BaseModel):
@@ -421,17 +560,21 @@ def get_bars(response: Response, sec: Sec, quo: Quo,
     def unique(ids):
         return list(dict.fromkeys(ids))
 
-    # Yields: quote-svc sums them up per period in its query (days come as they are).
-    yield_ids = unique(ii[0].sec_id for spec, ii in zip(specs, insts, strict=True) if spec.kind == "yield")
+    # An instrument's own values (a CMT's yield, a Treasury security's price): quote-svc sums them up per
+    # period in its query (days come as they are), one call per field.
     yield_bars: dict[int, list[BarOut]] = {}
-    if yield_ids and interval == "day":
-        for s in quo.series(yield_ids, start, end, source):
-            yield_bars[s.sec_id] = [_bar(p.as_of, p.as_of, p.value, p.value, p.value, p.value, "%", p.source)
-                                    for p in s.points]
-    elif yield_ids:
-        for s in quo.bars(yield_ids, start, end, interval, source):
-            yield_bars[s.sec_id] = [_bar(x.start, x.last, x.open, x.high, x.low, x.close, "%", x.source)
-                                    for x in s.bars]
+    for fld, unit in (("yield", "%"), ("price", "price")):
+        ids = unique(ii[0].sec_id for spec, ii in zip(specs, insts, strict=True)
+                     if spec.kind == "yield" and field_of(ii[0]) == fld)
+        src = source if fld == "yield" else ""
+        if ids and interval == "day":
+            for s in quo.series(ids, start, end, src, field=fld):
+                yield_bars[s.sec_id] = [_bar(p.as_of, p.as_of, p.value, p.value, p.value, p.value, unit, p.source)
+                                        for p in s.points]
+        elif ids:
+            for s in quo.bars(ids, start, end, interval, src, field=fld):
+                yield_bars[s.sec_id] = [_bar(x.start, x.last, x.open, x.high, x.low, x.close, unit, x.source)
+                                        for x in s.bars]
 
     # Spreads and flies: every day both (or all three) have, as decimals, then summed up per period.
     # A block bounds it: at most a decade of days per instrument.
@@ -471,7 +614,8 @@ def _bar(start: str, last: str, o, h, lo, c, unit: str, source: str, inputs: lis
 
 def _bar_series(spec: blocks.SeriesSpec, insts: list[Instrument], got: list[BarOut]) -> BarSeriesOut:
     names = [i.short_name for i in insts]
-    return BarSeriesOut(key=blocks.key(spec.kind, names), label=blocks.label(spec.kind, names), unit=spec.unit,
+    unit = "price" if spec.kind == "yield" and field_of(insts[0]) == "price" else spec.unit
+    return BarSeriesOut(key=blocks.key(spec.kind, names), label=blocks.label(spec.kind, names), unit=unit,
                         inputs=names if spec.kind != "yield" else [], bars=got)
 
 
