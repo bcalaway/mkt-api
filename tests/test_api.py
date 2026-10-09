@@ -70,6 +70,16 @@ def test_search():
     assert client.get("/api/search", params={"q": ""}).status_code == 422
 
 
+def test_search_pages():
+    every = [i["name"] for i in client.get("/api/search", params={"q": "CMT", "limit": 100}).json()]
+    assert len(every) == 3
+    first = [i["name"] for i in client.get("/api/search", params={"q": "CMT", "limit": 2}).json()]
+    second = [i["name"] for i in client.get("/api/search", params={"q": "CMT", "limit": 2, "offset": 2}).json()]
+    assert first + second == every
+    assert client.get("/api/search", params={"q": "CMT", "offset": len(every)}).json() == []
+    assert client.get("/api/search", params={"q": "CMT", "offset": -1}).status_code == 422
+
+
 def test_curve_uses_the_last_business_day_on_or_before_each_date():
     out = client.get("/api/curve", params={"compare": ["1D", "2d"]}).json()["curves"]
     latest, one, two = out

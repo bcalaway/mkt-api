@@ -2629,7 +2629,7 @@
     },
     "/api/search": {
       "get": {
-        "description": "Instruments whose name, alias, identifier or description contains q.",
+        "description": "Instruments whose name, alias, identifier or description contains q, a page at a time.\n\n`offset` skips that many matches, in the same order, so a screen pages by asking for one more than it\nshows (more past the page means there's a next one).",
         "operationId": "searchInstruments",
         "parameters": [
           {
@@ -2652,6 +2652,18 @@
               "maximum": 100,
               "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000,
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }
