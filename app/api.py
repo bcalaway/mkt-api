@@ -299,6 +299,8 @@ def _summary(i: Instrument) -> InstrumentSummary:
                              status=i.status, type=i.type)
 
 
+SEARCH_MAX = 10000  # matches a search pages through: secmaster-svc reads them all and returns the first offset + limit
+
 Sec = Annotated[Securities, Depends(securities)]
 Quo = Annotated[Quotes, Depends(quotes)]
 
@@ -338,9 +340,14 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
 
 @router.get("/search", operation_id="searchInstruments", response_model=list[InstrumentSummary])
 def search(sec: Sec, q: Annotated[str, Query(min_length=1, max_length=60)],
-           limit: Annotated[int, Query(ge=1, le=100)] = 20):
-    """Instruments whose name, alias, identifier or description contains q."""
-    return [_summary(i) for i in sec.search(q, limit)]
+           limit: Annotated[int, Query(ge=1, le=100)] = 20,
+           offset: Annotated[int, Query(ge=0, le=SEARCH_MAX)] = 0):
+    """Instruments whose name, alias, identifier or description contains q, a page at a time.
+
+    `offset` skips that many matches, in the same order, so a screen pages by asking for one more than it
+    shows (more past the page means there's a next one).
+    """
+    return [_summary(i) for i in sec.search(q, offset + limit)[offset:]]
 
 
 @router.get("/curve", operation_id="getCurves", response_model=CurveResponse)
