@@ -297,6 +297,47 @@
         "title": "BarsResponse",
         "type": "object"
       },
+      "BasketOut": {
+        "properties": {
+          "contract": {
+            "title": "Contract",
+            "type": "string"
+          },
+          "deliverables": {
+            "items": {
+              "$ref": "#/components/schemas/DeliverableOut"
+            },
+            "title": "Deliverables",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "product": {
+            "title": "Product",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract",
+          "product",
+          "month",
+          "status",
+          "rule",
+          "deliverables"
+        ],
+        "title": "BasketOut",
+        "type": "object"
+      },
       "CalendarOut": {
         "properties": {
           "coverage": {
@@ -844,6 +885,54 @@
         "title": "DayVersionOut",
         "type": "object"
       },
+      "DeliverableOut": {
+        "properties": {
+          "conversion_factor": {
+            "title": "Conversion Factor",
+            "type": "string"
+          },
+          "coupon": {
+            "title": "Coupon",
+            "type": "string"
+          },
+          "coupon_display": {
+            "title": "Coupon Display",
+            "type": "string"
+          },
+          "cusip": {
+            "title": "Cusip",
+            "type": "string"
+          },
+          "issue_date": {
+            "title": "Issue Date",
+            "type": "string"
+          },
+          "maturity_date": {
+            "title": "Maturity Date",
+            "type": "string"
+          },
+          "remaining_months": {
+            "title": "Remaining Months",
+            "type": "integer"
+          },
+          "security": {
+            "title": "Security",
+            "type": "string"
+          }
+        },
+        "required": [
+          "security",
+          "cusip",
+          "coupon",
+          "coupon_display",
+          "maturity_date",
+          "issue_date",
+          "conversion_factor",
+          "remaining_months"
+        ],
+        "title": "DeliverableOut",
+        "type": "object"
+      },
       "DisagreementOut": {
         "properties": {
           "calendar_holiday": {
@@ -968,6 +1057,312 @@
           "events"
         ],
         "title": "EventsResponse",
+        "type": "object"
+      },
+      "FieldPoint": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "value",
+          "display",
+          "source"
+        ],
+        "title": "FieldPoint",
+        "type": "object"
+      },
+      "FieldsOut": {
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/FieldPoint"
+              },
+              "type": "array"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "object"
+          }
+        },
+        "required": [
+          "instrument",
+          "fields",
+          "units"
+        ],
+        "title": "FieldsOut",
+        "type": "object"
+      },
+      "FuturesContractOut": {
+        "properties": {
+          "basket_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basket Size"
+          },
+          "cme_code": {
+            "title": "Cme Code",
+            "type": "string"
+          },
+          "final_settlement_date": {
+            "title": "Final Settlement Date",
+            "type": "string"
+          },
+          "first_delivery_date": {
+            "title": "First Delivery Date",
+            "type": "string"
+          },
+          "first_intention_date": {
+            "title": "First Intention Date",
+            "type": "string"
+          },
+          "first_notice_date": {
+            "title": "First Notice Date",
+            "type": "string"
+          },
+          "first_trade_date": {
+            "title": "First Trade Date",
+            "type": "string"
+          },
+          "last_delivery_date": {
+            "title": "Last Delivery Date",
+            "type": "string"
+          },
+          "last_trade_date": {
+            "title": "Last Trade Date",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reference_end": {
+            "title": "Reference End",
+            "type": "string"
+          },
+          "reference_start": {
+            "title": "Reference Start",
+            "type": "string"
+          },
+          "settlement_date": {
+            "title": "Settlement Date",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "cme_code",
+          "month",
+          "status",
+          "basket_size",
+          "first_trade_date",
+          "last_trade_date",
+          "first_intention_date",
+          "first_notice_date",
+          "first_delivery_date",
+          "last_delivery_date",
+          "reference_start",
+          "reference_end",
+          "final_settlement_date",
+          "settlement_date"
+        ],
+        "title": "FuturesContractOut",
+        "type": "object"
+      },
+      "FuturesGenericOut": {
+        "properties": {
+          "contract": {
+            "title": "Contract",
+            "type": "string"
+          },
+          "generic": {
+            "title": "Generic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generic",
+          "contract"
+        ],
+        "title": "FuturesGenericOut",
+        "type": "object"
+      },
+      "FuturesProductDetail": {
+        "properties": {
+          "basket_rule": {
+            "title": "Basket Rule",
+            "type": "string"
+          },
+          "basket_source": {
+            "title": "Basket Source",
+            "type": "string"
+          },
+          "cftc_code": {
+            "title": "Cftc Code",
+            "type": "string"
+          },
+          "cme_code": {
+            "title": "Cme Code",
+            "type": "string"
+          },
+          "contracts": {
+            "items": {
+              "$ref": "#/components/schemas/FuturesContractOut"
+            },
+            "title": "Contracts",
+            "type": "array"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "front": {
+            "title": "Front",
+            "type": "string"
+          },
+          "generics": {
+            "items": {
+              "$ref": "#/components/schemas/FuturesGenericOut"
+            },
+            "title": "Generics",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "root": {
+            "title": "Root",
+            "type": "string"
+          },
+          "rule_sources": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Rule Sources",
+            "type": "object"
+          },
+          "rules": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Rules",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root",
+          "cme_code",
+          "name",
+          "kind",
+          "currency",
+          "cftc_code",
+          "front",
+          "status",
+          "rules",
+          "rule_sources",
+          "basket_rule",
+          "basket_source",
+          "generics",
+          "contracts"
+        ],
+        "title": "FuturesProductDetail",
+        "type": "object"
+      },
+      "FuturesProductOut": {
+        "properties": {
+          "cftc_code": {
+            "title": "Cftc Code",
+            "type": "string"
+          },
+          "cme_code": {
+            "title": "Cme Code",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "front": {
+            "title": "Front",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "root": {
+            "title": "Root",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root",
+          "cme_code",
+          "name",
+          "kind",
+          "currency",
+          "cftc_code",
+          "front",
+          "status"
+        ],
+        "title": "FuturesProductOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1271,6 +1666,58 @@
           "capture_bytes"
         ],
         "title": "PeriodYearOut",
+        "type": "object"
+      },
+      "PositionPoint": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "value"
+        ],
+        "title": "PositionPoint",
+        "type": "object"
+      },
+      "PositioningOut": {
+        "properties": {
+          "cftc_code": {
+            "title": "Cftc Code",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/PositionPoint"
+              },
+              "type": "array"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "product": {
+            "title": "Product",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product",
+          "source",
+          "cftc_code",
+          "fields"
+        ],
+        "title": "PositioningOut",
         "type": "object"
       },
       "PriceOut": {
@@ -2546,6 +2993,227 @@
         "summary": "Get Events"
       }
     },
+    "/api/futures": {
+      "get": {
+        "description": "Every futures product the security master generates contracts for, by kind and root, with today's front.",
+        "operationId": "listFutures",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FuturesProductOut"
+                  },
+                  "title": "Response Listfutures",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Futures"
+      }
+    },
+    "/api/futures/contracts/{contract}/basket": {
+      "get": {
+        "description": "A Treasury futures contract's deliverable basket (TYZ26), by maturity, with each conversion factor.",
+        "operationId": "getBasket",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contract",
+            "required": true,
+            "schema": {
+              "title": "Contract",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BasketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Basket"
+      }
+    },
+    "/api/futures/{root}": {
+      "get": {
+        "description": "One product (TY): its date rules and where each comes from, its contracts (listed and delivering, or every\none back to 1990 with `include_expired`) with their dates, and today's generics.",
+        "operationId": "getFuturesProduct",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root",
+            "required": true,
+            "schema": {
+              "title": "Root",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_expired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Expired",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuturesProductDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Futures Product"
+      }
+    },
+    "/api/futures/{root}/positioning": {
+      "get": {
+        "description": "A product's weekly positioning from the CFTC's Traders in Financial Futures report: open interest and each\ntrader category's long and short positions, in contracts, as reported (no netting: that's analytics).\nDefault: everything since 2006, the fields in POSITIONING_FIELDS.",
+        "operationId": "getPositioning",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root",
+            "required": true,
+            "schema": {
+              "title": "Root",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "CFTC-TFF",
+              "enum": [
+                "CFTC-TFF",
+                "CFTC-TFF-COMBINED"
+              ],
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "field",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 40,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositioningOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Positioning"
+      }
+    },
     "/api/instruments": {
       "get": {
         "description": "Every instrument, or those of one type (`cmt_yield` for the curve's tenors); shortest tenor first.\n\nThere are thousands of Treasury securities, so a screen that wants the tenors asks for `type=cmt_yield`.",
@@ -2636,6 +3304,94 @@
           }
         },
         "summary": "Get Instrument"
+      }
+    },
+    "/api/instruments/{name}/fields": {
+      "get": {
+        "description": "An instrument's golden values for fields other than the one it's charted by: EFFR's target range\n(`target_low`, `target_high`), SOFR's percentiles (`rate_p1` ... `rate_p99`) and volume (`volume_bn`).\nDefault: everything to today.",
+        "operationId": "getInstrumentFields",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "field",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "title": "Field",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Instrument Fields"
       }
     },
     "/api/search": {

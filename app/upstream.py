@@ -253,6 +253,10 @@ class Securities(Protocol):
                         maturing_to: str = "", as_of: str = "", limit: int = 0, offset: int = 0) -> SecurityList: ...
     def get_security(self, name: str, as_of: str = "") -> Security: ...  # NotFound
     def list_auctions(self, start: str, end: str, limit: int = 0) -> list[AuctionRow]: ...
+    # Futures (mkt-data's docs/phase-4.md, step 7), as plain dicts in secmaster-svc's field names.
+    def futures_products(self) -> list[dict]: ...
+    def futures_product(self, root: str, include_expired: bool = False) -> dict: ...  # NotFound
+    def basket(self, contract: str) -> dict: ...  # NotFound
 
 
 class Quotes(Protocol):
@@ -439,6 +443,33 @@ class GrpcSecurities(_Grpc):
 
         r = self._call(self._stub, "ListAuctions", pb.ListAuctionsRequest(start=start, end=end, limit=limit))
         return [AuctionRow(a.sec_id, a.short_name, dict(a.fields)) for a in r.auctions]
+
+    def futures_products(self) -> list[dict]:
+        from app.grpc_gen import securities_pb2 as pb
+
+        r = self._call(self._stub, "ListFuturesProducts", pb.ListFuturesProductsRequest())
+        return [_message(p) for p in r.products]
+
+    def futures_product(self, root: str, include_expired: bool = False) -> dict:
+        from app.grpc_gen import securities_pb2 as pb
+
+        r = self._call(self._stub, "GetFuturesProduct",
+                       pb.GetFuturesProductRequest(root=root, include_expired=include_expired))
+        return {**_message(r.summary), "rules": dict(r.rules), "rule_sources": dict(r.rule_sources),
+                "basket_rule": r.basket_rule, "basket_source": r.basket_source,
+                "generics": [_message(g) for g in r.generics], "contracts": [_message(c) for c in r.contracts]}
+
+    def basket(self, contract: str) -> dict:
+        from app.grpc_gen import securities_pb2 as pb
+
+        r = self._call(self._stub, "GetBasket", pb.GetBasketRequest(contract=contract))
+        return {**{f.name: getattr(r, f.name) for f in r.DESCRIPTOR.fields if f.name != "deliverables"},
+                "deliverables": [_message(d) for d in r.deliverables]}
+
+
+def _message(m) -> dict:
+    """A flat protobuf message as a dict of its fields (defaults included)."""
+    return {f.name: getattr(m, f.name) for f in m.DESCRIPTOR.fields}
 
 
 class GrpcQuotes(_Grpc):
