@@ -354,6 +354,46 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
     )
 
 
+# A fixing's other fields (quote-svc app/load.py NYFED_FIELDS): which are rates, shown in percent like its rate.
+RATE_FIELD = re.compile(r"^(rate|target_|intraday_|std_dev)")
+FIELD_NAME = r"^[a-z][a-z0-9_]{0,39}$"
+
+
+class FieldPoint(BaseModel):
+    date: str
+    value: str  # as quote-svc has it: a rate as a decimal ("0.0425")
+    display: str  # in the field's unit: "4.25" percent for a rate, the value otherwise
+    source: str
+
+
+class FieldsOut(BaseModel):
+    instrument: str
+    fields: dict[str, list[FieldPoint]]
+    units: dict[str, str]  # "%" for a rate, "" for anything else (EFFR's volume_bn)
+
+
+@router.get("/instruments/{name}/fields", operation_id="getInstrumentFields", response_model=FieldsOut)
+def get_instrument_fields(name: str, quo: Quo, sec: Sec,
+                          field: Annotated[list[str], Query(min_length=1, max_length=12)],
+                          start: date | None = None, end: date | None = None):
+    """An instrument's golden values for fields other than the one it's charted by: EFFR's target range
+    (`target_low`, `target_high`), SOFR's percentiles (`rate_p1` ... `rate_p99`) and volume (`volume_bn`).
+    Default: everything to today."""
+    if bad := [f for f in field if not re.match(FIELD_NAME, f)]:
+        raise HTTPException(422, f"not a field name: {bad[0]!r}")
+    i = _resolve(sec, name)
+    unit = kind_of(i)[1]
+    s0, s1 = (start or date(1962, 1, 1)).isoformat(), (end or _today()).isoformat()
+    fields, units = {}, {}
+    for f in field:
+        u = "%" if unit == "%" and RATE_FIELD.match(f) else ""
+        got = quo.series([i.sec_id], s0, s1, "", field=f)
+        fields[f] = [FieldPoint(date=p.as_of, value=p.value, display=percent(p.value) if u else p.value, source=p.source)
+                     for p in (got[0].points if got else [])]
+        units[f] = u
+    return FieldsOut(instrument=i.short_name, fields=fields, units=units)
+
+
 @router.get("/search", operation_id="searchInstruments", response_model=list[InstrumentSummary])
 def search(sec: Sec, response: Response, q: Annotated[str, Query(min_length=1, max_length=60)],
            limit: Annotated[int, Query(ge=1, le=100)] = 20,

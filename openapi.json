@@ -1059,6 +1059,66 @@
         "title": "EventsResponse",
         "type": "object"
       },
+      "FieldPoint": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "value",
+          "display",
+          "source"
+        ],
+        "title": "FieldPoint",
+        "type": "object"
+      },
+      "FieldsOut": {
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/FieldPoint"
+              },
+              "type": "array"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "instrument": {
+            "title": "Instrument",
+            "type": "string"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "object"
+          }
+        },
+        "required": [
+          "instrument",
+          "fields",
+          "units"
+        ],
+        "title": "FieldsOut",
+        "type": "object"
+      },
       "FuturesContractOut": {
         "properties": {
           "basket_size": {
@@ -3244,6 +3304,94 @@
           }
         },
         "summary": "Get Instrument"
+      }
+    },
+    "/api/instruments/{name}/fields": {
+      "get": {
+        "description": "An instrument's golden values for fields other than the one it's charted by: EFFR's target range\n(`target_low`, `target_high`), SOFR's percentiles (`rate_p1` ... `rate_p99`) and volume (`volume_bn`).\nDefault: everything to today.",
+        "operationId": "getInstrumentFields",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "field",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "title": "Field",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Instrument Fields"
       }
     },
     "/api/search": {

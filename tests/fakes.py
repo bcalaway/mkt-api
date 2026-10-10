@@ -73,9 +73,12 @@ PRICES = {500: {"2026-09-30": ("99.5", "TD-PRICES"), "2026-10-01": ("99.828125",
 RATES = {600: {"2026-10-01": ("0.0388", "NYFED-SOFR"), "2026-10-02": ("0.039", "NYFED-SOFR")},
          601: {"2026-10-01": ("157.8100", "FRB-H10-RATES"), "2026-10-02": ("158.0200", "FRB-H10-RATES")}}
 # The CFTC's TFF report, in contracts: field -> sec_id -> date -> (value, source)
+TARGETS = {"target_low": {600: {"2026-10-02": ("0.04", "NYFED-SOFR")}},
+           "target_high": {600: {"2026-10-02": ("0.0425", "NYFED-SOFR")}},
+           "volume_bn": {600: {"2026-10-02": ("2650", "NYFED-SOFR")}}}
 POSITIONS = {"oi": {700: {"2026-09-22": ("5000000", "CFTC-TFF"), "2026-09-29": ("5100000", "CFTC-TFF")}},
              "dealer_long": {700: {"2026-09-29": ("400000", "CFTC-TFF")}}}
-BY_FIELD = {"price": PRICES, "rate": RATES, **POSITIONS}
+BY_FIELD = {"price": PRICES, "rate": RATES, **POSITIONS, **TARGETS}
 TY_SUMMARY = {"root": "TY", "cme_code": "ZN", "name": "10-Year T-Note Futures", "kind": "treasury", "currency": "USD",
               "cftc_code": "043602", "front": "TYZ26", "status": "listed"}
 DATES = dict.fromkeys(("first_trade_date", "last_trade_date", "first_intention_date", "first_notice_date",

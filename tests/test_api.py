@@ -428,3 +428,13 @@ def test_positioning_reads_each_cftc_field_from_quote_svc(fakes):
     assert list(one["fields"]) == ["oi"] and one["source"] == "CFTC-TFF-COMBINED"
     assert client.get("/api/futures/UST-10Y-CMT/positioning").status_code == 404
     assert client.get("/api/futures/TY/positioning?source=CFTC-COT").status_code == 422
+
+
+def test_a_fixings_other_fields_rates_in_percent():
+    d = client.get("/api/instruments/SOFR/fields?field=target_low&field=target_high&field=volume_bn").json()
+    assert d["instrument"] == "SOFR"
+    assert d["fields"]["target_high"] == [{"date": "2026-10-02", "value": "0.0425", "display": "4.25", "source": "NYFED-SOFR"}]
+    assert d["fields"]["volume_bn"][0]["display"] == "2650"
+    assert d["units"] == {"target_low": "%", "target_high": "%", "volume_bn": ""}
+    assert client.get("/api/instruments/SOFR/fields?field=Robert'); DROP").status_code == 422
+    assert client.get("/api/instruments/SOFR/fields").status_code == 422
