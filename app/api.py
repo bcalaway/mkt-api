@@ -468,6 +468,147 @@ def _row(x: SecuritySummary, last) -> SecurityRow:
     )
 
 
+# --- Futures (mkt-data's docs/phase-4.md, step 7) ---
+
+
+class FuturesProductOut(BaseModel):
+    root: str  # TY: the product's short name
+    cme_code: str  # ZN
+    name: str
+    kind: str  # treasury, treasury_cash, stir, fx, fx_cash
+    currency: str
+    cftc_code: str  # "" if the CFTC doesn't report it
+    front: str  # today's first generic: TYZ26
+    status: str
+
+
+class FuturesContractOut(BaseModel):
+    name: str  # TYZ26
+    cme_code: str  # ZNZ6
+    month: str  # 2026-12
+    status: str
+    basket_size: int | None  # a deliverable Treasury contract's; None for other kinds
+    first_trade_date: str
+    last_trade_date: str
+    first_intention_date: str
+    first_notice_date: str
+    first_delivery_date: str
+    last_delivery_date: str
+    reference_start: str
+    reference_end: str
+    final_settlement_date: str
+    settlement_date: str
+
+
+class FuturesGenericOut(BaseModel):
+    generic: str
+    contract: str
+
+
+class FuturesProductDetail(FuturesProductOut):
+    rules: dict[str, str]
+    rule_sources: dict[str, str]
+    basket_rule: str
+    basket_source: str
+    generics: list[FuturesGenericOut]
+    contracts: list[FuturesContractOut]
+
+
+class DeliverableOut(BaseModel):
+    security: str
+    cusip: str
+    coupon: str  # a decimal: "0.0425"
+    coupon_display: str  # in percent: "4.25"
+    maturity_date: str
+    issue_date: str
+    conversion_factor: str  # as computed, exactly: "0.8732"
+    remaining_months: int
+
+
+class BasketOut(BaseModel):
+    contract: str
+    product: str
+    month: str
+    status: str
+    rule: str
+    deliverables: list[DeliverableOut]
+
+
+# The CFTC's positions as quote-svc names them (quote-svc app/load.py CFTC_FIELDS), in contracts.
+POSITIONING_FIELDS = ("oi", "dealer_long", "dealer_short", "asset_mgr_long", "asset_mgr_short", "lev_funds_long",
+                      "lev_funds_short", "other_long", "other_short", "nonrept_long", "nonrept_short")
+POSITIONING_SOURCES = ("CFTC-TFF", "CFTC-TFF-COMBINED")
+
+
+class PositionPoint(BaseModel):
+    date: str  # the report's as-of date (a Tuesday, or the Monday of a holiday week)
+    value: str  # contracts, as reported
+
+
+class PositioningOut(BaseModel):
+    product: str
+    source: str  # CFTC-TFF (futures only) or CFTC-TFF-COMBINED (with options, delta-adjusted)
+    cftc_code: str
+    fields: dict[str, list[PositionPoint]]
+
+
+@router.get("/futures", operation_id="listFutures", response_model=list[FuturesProductOut])
+def list_futures(sec: Sec):
+    """Every futures product the security master generates contracts for, by kind and root, with today's front."""
+    return [FuturesProductOut(**p) for p in sec.futures_products()]
+
+
+@router.get("/futures/{root}", operation_id="getFuturesProduct", response_model=FuturesProductDetail)
+def get_futures_product(root: str, sec: Sec, include_expired: bool = False):
+    """One product (TY): its date rules and where each comes from, its contracts (listed and delivering, or every
+    one back to 1990 with `include_expired`) with their dates, and today's generics."""
+    try:
+        d = sec.futures_product(root.strip(), include_expired)
+    except NotFound:
+        raise HTTPException(404, f"no futures product {root!r}") from None
+    d["contracts"] = [FuturesContractOut(**{**c, "basket_size": c["basket_size"] if c["basket_size"] >= 0 else None})
+                      for c in d["contracts"]]
+    return FuturesProductDetail(**d)
+
+
+@router.get("/futures/contracts/{contract}/basket", operation_id="getBasket", response_model=BasketOut)
+def get_basket(contract: str, sec: Sec):
+    """A Treasury futures contract's deliverable basket (TYZ26), by maturity, with each conversion factor."""
+    try:
+        d = sec.basket(contract.strip())
+    except NotFound:
+        raise HTTPException(404, f"no futures contract {contract!r}") from None
+    return BasketOut(**{k: d[k] for k in ("contract", "product", "month", "status", "rule")}, deliverables=[
+        DeliverableOut(security=x["security"], cusip=x["cusip"], coupon=x["coupon_rate"],
+                       coupon_display=percent(x["coupon_rate"]) if x["coupon_rate"] else "",
+                       maturity_date=x["maturity_date"], issue_date=x["issue_date"],
+                       conversion_factor=x["conversion_factor"], remaining_months=x["remaining_months"])
+        for x in d["deliverables"]])
+
+
+@router.get("/futures/{root}/positioning", operation_id="getPositioning", response_model=PositioningOut)
+def get_positioning(root: str, sec: Sec, quo: Quo,
+                    source: Annotated[Literal["CFTC-TFF", "CFTC-TFF-COMBINED"], Query()] = "CFTC-TFF",
+                    start: date | None = None, end: date | None = None,
+                    field: Annotated[list[str] | None, Query(max_length=40)] = None):
+    """A product's weekly positioning from the CFTC's Traders in Financial Futures report: open interest and each
+    trader category's long and short positions, in contracts, as reported (no netting: that's analytics).
+    Default: everything since 2006, the fields in POSITIONING_FIELDS."""
+    i = _resolve(sec, root)
+    if i.type != "fut_product":
+        raise HTTPException(404, f"{root!r} isn't a futures product")
+    if not i.identifiers:  # the cached list carries no identifiers
+        i = sec.get_instrument(i.short_name)
+    code = next((x.value for x in i.identifiers if x.scheme == "CFTC"), "")
+    fields = field or list(POSITIONING_FIELDS)
+    s0, s1 = (start or date(2006, 1, 1)).isoformat(), (end or _today()).isoformat()
+    out = {}
+    for f in fields:
+        got = quo.series([i.sec_id], s0, s1, source, field=f)
+        out[f] = [PositionPoint(date=p.as_of, value=p.value) for p in (got[0].points if got else [])]
+    return PositioningOut(product=i.short_name, source=source, cftc_code=code, fields=out)
+
+
 @router.get("/securities", operation_id="listSecurities", response_model=SecurityListResponse)
 def list_securities(sec: Sec, quo: Quo, type_: Annotated[SecurityType | None, Query(alias="type")] = None,
                     include_inactive: bool = False, maturing_from: date | None = None,

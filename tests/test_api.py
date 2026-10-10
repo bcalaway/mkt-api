@@ -49,7 +49,7 @@ def test_offset_dates():
 def test_instruments_by_short_name_without_sec_ids():
     out = client.get("/api/instruments").json()
     assert [i["name"] for i in out] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT", "UST-4.25-2035-08-15", "SOFR",
-                                        "USDJPY-H10"]
+                                        "USDJPY-H10", "TY"]
     assert "sec_id" not in str(out) and out[3]["type"] == "ust_note"
     tenors = client.get("/api/instruments", params={"type": "cmt_yield"}).json()
     assert [i["name"] for i in tenors] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT"]
@@ -387,3 +387,44 @@ def test_a_fixing_has_a_latest_value_and_a_chart_in_its_unit(fakes):
     _, quo = fakes
     rate_calls = [c[1] for c in quo.calls if c[0] == "series" and c[-1] == "rate"]
     assert sorted(rate_calls) == [(600,), (601,)]  # quote-svc's golden rates, one call per unit
+
+
+def test_futures_products():
+    r = client.get("/api/futures")
+    assert r.status_code == 200
+    assert r.json() == [{"root": "TY", "cme_code": "ZN", "name": "10-Year T-Note Futures", "kind": "treasury",
+                         "currency": "USD", "cftc_code": "043602", "front": "TYZ26", "status": "listed"}]
+
+
+def test_a_futures_product_with_contracts_generics_and_rules():
+    d = client.get("/api/futures/ty").json()
+    assert d["root"] == "TY" and d["generics"] == [{"generic": "TY1", "contract": "TYZ26"}]
+    assert [c["name"] for c in d["contracts"]] == ["TYZ26"]
+    assert d["contracts"][0]["basket_size"] == 14 and d["contracts"][0]["last_trade_date"] == "2026-12-19"
+    assert d["rule_sources"]["last_trade_date"] == "CBOT Rulebook 19102.D."
+    assert [c["name"] for c in client.get("/api/futures/TY?include_expired=true").json()["contracts"]] == \
+        ["TYU26", "TYZ26"]
+    assert client.get("/api/futures/XX").status_code == 404
+
+
+def test_a_basket_with_conversion_factors_as_given():
+    d = client.get("/api/futures/contracts/TYZ26/basket").json()
+    assert d["product"] == "TY" and d["rule"] == "6.5y-10y"
+    assert d["deliverables"] == [{"security": "UST-4.25-2035-08-15", "cusip": "91282CNC1", "coupon": "0.0425",
+                                  "coupon_display": "4.25", "maturity_date": "2035-08-15", "issue_date": "2025-08-15",
+                                  "conversion_factor": "0.8732", "remaining_months": 104}]
+    assert client.get("/api/futures/contracts/TYZ27/basket").status_code == 404
+
+
+def test_positioning_reads_each_cftc_field_from_quote_svc(fakes):
+    r = client.get("/api/futures/TY/positioning?start=2026-09-01&end=2026-09-30")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["product"] == "TY" and d["cftc_code"] == "043602" and d["source"] == "CFTC-TFF"
+    assert d["fields"]["oi"] == [{"date": "2026-09-22", "value": "5000000"}, {"date": "2026-09-29", "value": "5100000"}]
+    assert d["fields"]["dealer_long"] == [{"date": "2026-09-29", "value": "400000"}]
+    assert set(d["fields"]) == set(api.POSITIONING_FIELDS)
+    one = client.get("/api/futures/TY/positioning?source=CFTC-TFF-COMBINED&field=oi").json()
+    assert list(one["fields"]) == ["oi"] and one["source"] == "CFTC-TFF-COMBINED"
+    assert client.get("/api/futures/UST-10Y-CMT/positioning").status_code == 404
+    assert client.get("/api/futures/TY/positioning?source=CFTC-COT").status_code == 422

@@ -56,7 +56,10 @@ SOFR = Instrument(600, "SOFR", "", "Secured Overnight Financing Rate", type="rat
                   calendar="SIFMA-US", identifiers=(Identifier("NYFED-SOFR", "SOFR"),))
 USDJPY = Instrument(601, "USDJPY-H10", "", "H.10 noon buying rate: yen per dollar", type="fx_fixing", currency="JPY",
                     calendar="FED", identifiers=(Identifier("FRB-H10-RATES", "RXI_N.B.JA"),))
-ALL = [SIX_WEEK, TWO, TEN, NOTE, SOFR, USDJPY]
+# A futures product (phase 4, step 7), with the CFTC's code for it.
+TY = Instrument(700, "TY", "", "10-Year T-Note Futures", type="fut_product", currency="USD",
+                identifiers=(Identifier("CME", "ZN"), Identifier("CFTC", "043602")))
+ALL = [SIX_WEEK, TWO, TEN, NOTE, SOFR, USDJPY, TY]
 
 # sec_id -> date -> (value, source)
 QUOTES = {
@@ -69,7 +72,15 @@ QUOTES = {
 PRICES = {500: {"2026-09-30": ("99.5", "TD-PRICES"), "2026-10-01": ("99.828125", "TD-PRICES")}}
 RATES = {600: {"2026-10-01": ("0.0388", "NYFED-SOFR"), "2026-10-02": ("0.039", "NYFED-SOFR")},
          601: {"2026-10-01": ("157.8100", "FRB-H10-RATES"), "2026-10-02": ("158.0200", "FRB-H10-RATES")}}
-BY_FIELD = {"price": PRICES, "rate": RATES}
+# The CFTC's TFF report, in contracts: field -> sec_id -> date -> (value, source)
+POSITIONS = {"oi": {700: {"2026-09-22": ("5000000", "CFTC-TFF"), "2026-09-29": ("5100000", "CFTC-TFF")}},
+             "dealer_long": {700: {"2026-09-29": ("400000", "CFTC-TFF")}}}
+BY_FIELD = {"price": PRICES, "rate": RATES, **POSITIONS}
+TY_SUMMARY = {"root": "TY", "cme_code": "ZN", "name": "10-Year T-Note Futures", "kind": "treasury", "currency": "USD",
+              "cftc_code": "043602", "front": "TYZ26", "status": "listed"}
+DATES = dict.fromkeys(("first_trade_date", "last_trade_date", "first_intention_date", "first_notice_date",
+                       "first_delivery_date", "last_delivery_date", "reference_start", "reference_end",
+                       "final_settlement_date", "settlement_date"), "")
 
 
 class FakeSecurities:
@@ -111,6 +122,30 @@ class FakeSecurities:
                                                 "high_discount_rate": "0.03805", "bid_to_cover": "2.87"}),
         ]
         return sorted((r for r in rows if start <= r.fields["auction_date"] <= end), key=lambda r: r.fields["auction_date"])
+
+    def futures_products(self):
+        return [TY_SUMMARY]
+
+    def futures_product(self, root, include_expired=False):
+        if root.upper() != "TY":
+            raise NotFound(f"no futures product {root}")
+        contracts = [{"name": "TYZ26", "cme_code": "ZNZ6", "month": "2026-12", "status": "listed", "basket_size": 14,
+                      **DATES, "last_trade_date": "2026-12-19"}]
+        if include_expired:
+            contracts.insert(0, {"name": "TYU26", "cme_code": "ZNU6", "month": "2026-09", "status": "expired",
+                                 "basket_size": 15, **DATES})
+        return {**TY_SUMMARY, "rules": {"last_trade_date": "last_bd_minus:7"},
+                "rule_sources": {"last_trade_date": "CBOT Rulebook 19102.D."}, "basket_rule": "6.5y-10y",
+                "basket_source": "CBOT Rulebook 19104.", "generics": [{"generic": "TY1", "contract": "TYZ26"}],
+                "contracts": contracts}
+
+    def basket(self, contract):
+        if contract.upper() != "TYZ26":
+            raise NotFound(f"no futures contract {contract}")
+        return {"contract": "TYZ26", "product": "TY", "month": "2026-12", "status": "listed", "rule": "6.5y-10y",
+                "deliverables": [{"security": "UST-4.25-2035-08-15", "cusip": "91282CNC1", "coupon_rate": "0.0425",
+                                  "maturity_date": "2035-08-15", "issue_date": "2025-08-15",
+                                  "conversion_factor": "0.8732", "remaining_months": 104, "valid_from": "2025-08-15"}]}
 
     def get_security(self, name, as_of=""):
         if name.upper() not in ("UST-4.25-2035-08-15", "UST-10Y-OTR", "91282CNC1"):
