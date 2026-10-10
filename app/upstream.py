@@ -248,9 +248,9 @@ class SourceDetail:
 class Securities(Protocol):
     def list_instruments(self) -> list[Instrument]: ...
     def get_instrument(self, name: str) -> Instrument: ...  # NotFound
-    def search(self, query: str, limit: int) -> list[Instrument]: ...
+    def search(self, query: str, limit: int, offset: int = 0) -> tuple[list[Instrument], int]: ...  # a page, total
     def list_securities(self, security_type: str = "", include_inactive: bool = False, maturing_from: str = "",
-                        maturing_to: str = "", as_of: str = "", limit: int = 0) -> SecurityList: ...
+                        maturing_to: str = "", as_of: str = "", limit: int = 0, offset: int = 0) -> SecurityList: ...
     def get_security(self, name: str, as_of: str = "") -> Security: ...  # NotFound
     def list_auctions(self, start: str, end: str, limit: int = 0) -> list[AuctionRow]: ...
 
@@ -405,19 +405,19 @@ class GrpcSecurities(_Grpc):
 
         return _instrument(self._call(self._stub, "GetInstrument", pb.GetInstrumentRequest(name=name)))
 
-    def search(self, query: str, limit: int) -> list[Instrument]:
+    def search(self, query: str, limit: int, offset: int = 0) -> tuple[list[Instrument], int]:
         from app.grpc_gen import securities_pb2 as pb
 
-        r = self._call(self._stub, "Search", pb.SearchRequest(query=query, limit=limit))
-        return [_instrument(i) for i in r.instruments]
+        r = self._call(self._stub, "Search", pb.SearchRequest(query=query, limit=limit, offset=offset))
+        return [_instrument(i) for i in r.instruments], r.total
 
     def list_securities(self, security_type: str = "", include_inactive: bool = False, maturing_from: str = "",
-                        maturing_to: str = "", as_of: str = "", limit: int = 0) -> SecurityList:
+                        maturing_to: str = "", as_of: str = "", limit: int = 0, offset: int = 0) -> SecurityList:
         from app.grpc_gen import securities_pb2 as pb
 
         r = self._call(self._stub, "ListSecurities", pb.ListSecuritiesRequest(
             security_type=security_type, include_inactive=include_inactive, maturing_from=maturing_from,
-            maturing_to=maturing_to, as_of=as_of, limit=limit))
+            maturing_to=maturing_to, as_of=as_of, limit=limit, offset=offset))
         return SecurityList(r.as_of, r.total, [SecuritySummary(
             sec_id=x.sec_id, short_name=x.short_name, cusip=x.cusip, security_type=x.security_type, cmb=x.cmb,
             term=x.term, original_term=x.original_term, coupon_rate=x.coupon_rate, frn_spread=x.frn_spread,

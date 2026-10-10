@@ -77,6 +77,7 @@ def test_search_pages():
     second = [i["name"] for i in client.get("/api/search", params={"q": "CMT", "limit": 2, "offset": 2}).json()]
     assert first + second == every
     assert client.get("/api/search", params={"q": "CMT", "offset": len(every)}).json() == []
+    assert client.get("/api/search", params={"q": "CMT", "limit": 2}).headers["X-Total-Count"] == str(len(every))
     assert client.get("/api/search", params={"q": "CMT", "offset": -1}).status_code == 422
 
 
@@ -256,6 +257,8 @@ def test_securities_list_outstanding_with_latest_price(fakes):
     every = client.get("/api/securities", params={"include_inactive": True, "type": "bill"}).json()
     assert [s["name"] for s in every["securities"]] == ["UST-B-2026-01-02"] and every["securities"][0]["price"] is None
     assert client.get("/api/securities", params={"type": "swap"}).status_code == 422
+    page = client.get("/api/securities", params={"include_inactive": True, "limit": 1, "offset": 1}).json()
+    assert page["total"] == 2 and [s["name"] for s in page["securities"]] == ["UST-4.25-2035-08-15"]
 
 
 def test_a_security_in_full(fakes):

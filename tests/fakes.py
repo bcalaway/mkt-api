@@ -79,15 +79,16 @@ class FakeSecurities:
                 return i
         raise NotFound(f"no instrument {name}")
 
-    def search(self, query, limit):
-        return [i for i in ALL if query.upper() in i.short_name.upper()][:limit]
+    def search(self, query, limit, offset=0):
+        hits = [i for i in ALL if query.upper() in i.short_name.upper()]
+        return hits[offset:offset + limit], len(hits)
 
     def list_securities(self, security_type="", include_inactive=False, maturing_from="", maturing_to="", as_of="",
-                        limit=0):
+                        limit=0, offset=0):
         self.calls.append(("list_securities", security_type, include_inactive, maturing_from, maturing_to, limit))
         rows = [r for r in (MATURED, NOTE_ROW) if include_inactive or r.status == "active"]
         rows = [r for r in rows if not security_type or r.security_type == security_type]
-        return SecurityList("2026-10-03", len(rows), rows[:limit or 1000])
+        return SecurityList("2026-10-03", len(rows), rows[offset:offset + (limit or 1000)])
 
     def list_auctions(self, start, end, limit=0):
         self.calls.append(("list_auctions", start, end))
