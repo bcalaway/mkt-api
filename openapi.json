@@ -2629,7 +2629,7 @@
     },
     "/api/search": {
       "get": {
-        "description": "Instruments whose name, alias, identifier or description contains q, a page at a time.\n\n`offset` skips that many matches, in the same order, so a screen pages by asking for one more than it\nshows (more past the page means there's a next one).",
+        "description": "Instruments whose name, alias, identifier or description contains q, a page at a time.\n\n`offset` skips that many matches, in the same order. The `X-Total-Count` header says how many match in all,\nso a screen can show the count and page links.",
         "operationId": "searchInstruments",
         "parameters": [
           {
@@ -2661,7 +2661,7 @@
             "required": false,
             "schema": {
               "default": 0,
-              "maximum": 10000,
+              "maximum": 100000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -2699,7 +2699,7 @@
     },
     "/api/securities": {
       "get": {
-        "description": "Treasury securities by maturity: outstanding ones, or all since 1980 with `include_inactive`.\n\nWith their CUSIP, coupon, dates, on-the-run aliases (today) and, for outstanding ones, the latest\nFedInvest end-of-day price.",
+        "description": "Treasury securities by maturity: outstanding ones, or all since 1980 with `include_inactive`.\n\nWith their CUSIP, coupon, dates, on-the-run aliases (today) and, for outstanding ones, the latest\nFedInvest end-of-day price. `offset` skips that many, in maturity order; `total` counts every match.",
         "operationId": "listSecurities",
         "parameters": [
           {
@@ -2778,6 +2778,18 @@
               "maximum": 6000,
               "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }

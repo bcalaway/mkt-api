@@ -146,7 +146,8 @@ def test_securities(target):
     assert sec.get_instrument("ust-10y-cmt").short_name == "UST-10Y-CMT"
     with pytest.raises(NotFound):
         sec.get_instrument("NOPE")
-    assert [x.short_name for x in sec.search("10", 5)] == ["UST-10Y-CMT"]
+    rows, _total = sec.search("10", 5)
+    assert [x.short_name for x in rows] == ["UST-10Y-CMT"]
 
 
 def test_quotes(target):

@@ -299,7 +299,7 @@ def _summary(i: Instrument) -> InstrumentSummary:
                              status=i.status, type=i.type)
 
 
-SEARCH_MAX = 10000  # matches a search pages through: secmaster-svc reads them all and returns the first offset + limit
+SEARCH_MAX = 100000  # secmaster-svc pages its search itself
 
 Sec = Annotated[Securities, Depends(securities)]
 Quo = Annotated[Quotes, Depends(quotes)]
@@ -339,15 +339,17 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
 
 
 @router.get("/search", operation_id="searchInstruments", response_model=list[InstrumentSummary])
-def search(sec: Sec, q: Annotated[str, Query(min_length=1, max_length=60)],
+def search(sec: Sec, response: Response, q: Annotated[str, Query(min_length=1, max_length=60)],
            limit: Annotated[int, Query(ge=1, le=100)] = 20,
            offset: Annotated[int, Query(ge=0, le=SEARCH_MAX)] = 0):
     """Instruments whose name, alias, identifier or description contains q, a page at a time.
 
-    `offset` skips that many matches, in the same order, so a screen pages by asking for one more than it
-    shows (more past the page means there's a next one).
+    `offset` skips that many matches, in the same order. The `X-Total-Count` header says how many match in all,
+    so a screen can show the count and page links.
     """
-    return [_summary(i) for i in sec.search(q, offset + limit)[offset:]]
+    rows, total = sec.search(q, limit, offset)
+    response.headers["X-Total-Count"] = str(total)
+    return [_summary(i) for i in rows]
 
 
 @router.get("/curve", operation_id="getCurves", response_model=CurveResponse)
@@ -453,14 +455,15 @@ def _row(x: SecuritySummary, last) -> SecurityRow:
 @router.get("/securities", operation_id="listSecurities", response_model=SecurityListResponse)
 def list_securities(sec: Sec, quo: Quo, type_: Annotated[SecurityType | None, Query(alias="type")] = None,
                     include_inactive: bool = False, maturing_from: date | None = None,
-                    maturing_to: date | None = None, limit: Annotated[int, Query(ge=1, le=6000)] = 1000):
+                    maturing_to: date | None = None, limit: Annotated[int, Query(ge=1, le=6000)] = 1000,
+                    offset: Annotated[int, Query(ge=0, le=100000)] = 0):
     """Treasury securities by maturity: outstanding ones, or all since 1980 with `include_inactive`.
 
     With their CUSIP, coupon, dates, on-the-run aliases (today) and, for outstanding ones, the latest
-    FedInvest end-of-day price.
+    FedInvest end-of-day price. `offset` skips that many, in maturity order; `total` counts every match.
     """
     got = sec.list_securities(type_ or "", include_inactive, maturing_from.isoformat() if maturing_from else "",
-                              maturing_to.isoformat() if maturing_to else "", "", limit)
+                              maturing_to.isoformat() if maturing_to else "", "", limit, offset)
     active = [x.sec_id for x in got.securities if x.status == "active"]
     last = {x.sec_id: x for x in quo.latest(active, field="price")} if active else {}
     return SecurityListResponse(as_of=got.as_of, total=got.total,
