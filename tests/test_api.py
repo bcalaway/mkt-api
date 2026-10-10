@@ -48,7 +48,8 @@ def test_offset_dates():
 
 def test_instruments_by_short_name_without_sec_ids():
     out = client.get("/api/instruments").json()
-    assert [i["name"] for i in out] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT", "UST-4.25-2035-08-15"]
+    assert [i["name"] for i in out] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT", "UST-4.25-2035-08-15", "SOFR",
+                                        "USDJPY-H10"]
     assert "sec_id" not in str(out) and out[3]["type"] == "ust_note"
     tenors = client.get("/api/instruments", params={"type": "cmt_yield"}).json()
     assert [i["name"] for i in tenors] == ["UST-1.5M-CMT", "UST-2Y-CMT", "UST-10Y-CMT"]
@@ -370,3 +371,19 @@ def test_a_captures_text():
     assert client.get("/api/captures/2/text").status_code == 404
     assert client.get("/api/captures/1/text").status_code == 415
     assert client.get("/api/captures/8099/text", params={"limit": 5000}).status_code == 422
+
+
+def test_a_fixing_has_a_latest_value_and_a_chart_in_its_unit(fakes):
+    sofr = client.get("/api/instruments/SOFR").json()
+    assert sofr["unit"] == "%" and sofr["latest"] == {"date": "2026-10-02", "value": "0.039", "display": "3.90",
+                                                      "source": "NYFED-SOFR"}
+    jpy = client.get("/api/instruments/USDJPY-H10").json()
+    assert jpy["unit"] == "value" and jpy["latest"]["display"] == "158.0200"  # as H.10 printed it
+    got = client.get("/api/bars", params={"series": ["SOFR", "USDJPY-H10"], "interval": "day", "block": "2026"}).json()
+    by = {x["key"]: x for x in got["series"]}
+    assert by["SOFR"]["unit"] == "%" and [b["close_display"] for b in by["SOFR"]["bars"]] == ["3.88", "3.90"]
+    assert by["USDJPY-H10"]["unit"] == "value"
+    assert [b["close_display"] for b in by["USDJPY-H10"]["bars"]] == ["157.8100", "158.0200"]
+    _, quo = fakes
+    rate_calls = [c[1] for c in quo.calls if c[0] == "series" and c[-1] == "rate"]
+    assert sorted(rate_calls) == [(600,), (601,)]  # quote-svc's golden rates, one call per unit

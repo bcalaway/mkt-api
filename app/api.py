@@ -111,7 +111,10 @@ def bp(value: Decimal | str) -> str:
 
 
 def display(value: Decimal | str, unit: str) -> str:
-    """A decimal in its unit's display form: percent ("4.10"), basis points ("52") or a price per 100 ("99.875")."""
+    """A decimal in its unit's display form: percent ("4.10"), basis points ("52"), a price per 100 ("99.875"),
+    or, for an FX rate or index (`value`), as its source printed it ("157.8100")."""
+    if unit == "value":
+        return str(value)
     if unit == "price":
         return price(str(value))
     return percent(str(value)) if unit == "%" else bp(value)
@@ -129,9 +132,20 @@ def price(value: str) -> str:
 SECURITY_PREFIX = "ust_"
 
 
+# The fixings (mkt-data's docs/phase-4.md, step 4): a rate fixing is a rate, shown in percent like a yield; an
+# FX rate (dollars per euro, yen per dollar) and a dollar index are shown as their source printed them.
+FIXING_FIELDS = {"rate_fixing": ("rate", "%"), "fx_fixing": ("rate", "value"), "fx_index": ("index", "value")}
+
+
+def kind_of(i: Instrument) -> tuple[str, str]:
+    """The quote field an instrument's chart and latest value use, and the unit they're shown in."""
+    if i.type.startswith(SECURITY_PREFIX):
+        return "price", "price"
+    return FIXING_FIELDS.get(i.type, ("yield", "%"))
+
+
 def field_of(i: Instrument) -> str:
-    """The quote field an instrument's chart and latest value use."""
-    return "price" if i.type.startswith(SECURITY_PREFIX) else "yield"
+    return kind_of(i)[0]
 
 
 def percent(value: str) -> str:
@@ -226,7 +240,7 @@ class NoteOut(BaseModel):
 class LatestOut(BaseModel):
     date: str
     value: str  # the rate as a decimal: "0.041"; a Treasury security's price per 100: "99.828125"
-    display: str  # in percent: "4.10"; a price with at least three places: "99.828125", "100.000"
+    display: str  # in percent: "4.10"; a price with at least three places: "99.828125", "100.000"; an FX rate as printed
     source: str
 
 
@@ -239,6 +253,7 @@ class InstrumentDetail(InstrumentSummary):
     identifiers: list[IdentifierOut]
     notes: list[NoteOut]
     latest: LatestOut | None
+    unit: Literal["%", "price", "value"] = "%"  # what latest.display and the chart are in
 
 
 class CurvePointOut(BaseModel):
@@ -280,7 +295,8 @@ class BarOut(BaseModel):
 class BarSeriesOut(BaseModel):
     key: str  # the series as asked for, with short names: "UST-10Y-CMT", "spread(UST-10Y-CMT,UST-2Y-CMT)"
     label: str  # "UST-10Y-CMT - UST-2Y-CMT"
-    unit: Literal["%", "bp", "price"]  # what the *_display fields are in: a Treasury security's price per 100
+    unit: Literal["%", "bp", "price", "value"]  # what the *_display fields are in: a Treasury security's price
+    # per 100; `value` an FX rate or index as printed
     inputs: list[str]  # the instruments it's made from, by short name
     bars: list[BarOut]
 
@@ -323,10 +339,9 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
     i = _resolve(sec, name)
     if not i.identifiers and not i.notes:
         i = sec.get_instrument(i.short_name)  # the list leaves identifiers and notes out
-    fld = field_of(i)
+    fld, unit = kind_of(i)
     got = [x for x in quo.latest([i.sec_id], field=fld) if x.value]
-    latest = LatestOut(date=got[0].as_of, value=got[0].value,
-                       display=price(got[0].value) if fld == "price" else percent(got[0].value),
+    latest = LatestOut(date=got[0].as_of, value=got[0].value, display=display(got[0].value, unit),
                        source=got[0].source) if got else None
     return InstrumentDetail(
         **_summary(i).model_dump(), currency=i.currency, country=i.country, curve=i.curve,
@@ -335,6 +350,7 @@ def get_instrument(name: str, sec: Sec, quo: Quo):
                                    valid_to=x.valid_to or None) for x in i.identifiers],
         notes=[NoteOut(key=n.key, date=n.date, text=n.text) for n in i.notes],
         latest=latest,
+        unit=unit,
     )
 
 
@@ -1009,9 +1025,10 @@ def get_bars(response: Response, sec: Sec, quo: Quo,
     # An instrument's own values (a CMT's yield, a Treasury security's price): quote-svc sums them up per
     # period in its query (days come as they are), one call per field.
     yield_bars: dict[int, list[BarOut]] = {}
-    for fld, unit in (("yield", "%"), ("price", "price")):
+    kinds = unique(kind_of(ii[0]) for spec, ii in zip(specs, insts, strict=True) if spec.kind == "yield")
+    for fld, unit in kinds:
         ids = unique(ii[0].sec_id for spec, ii in zip(specs, insts, strict=True)
-                     if spec.kind == "yield" and field_of(ii[0]) == fld)
+                     if spec.kind == "yield" and kind_of(ii[0]) == (fld, unit))
         src = source if fld == "yield" else ""
         if ids and interval == "day":
             for s in quo.series(ids, start, end, src, field=fld):
@@ -1060,7 +1077,7 @@ def _bar(start: str, last: str, o, h, lo, c, unit: str, source: str, inputs: lis
 
 def _bar_series(spec: blocks.SeriesSpec, insts: list[Instrument], got: list[BarOut]) -> BarSeriesOut:
     names = [i.short_name for i in insts]
-    unit = "price" if spec.kind == "yield" and field_of(insts[0]) == "price" else spec.unit
+    unit = kind_of(insts[0])[1] if spec.kind == "yield" else spec.unit
     return BarSeriesOut(key=blocks.key(spec.kind, names), label=blocks.label(spec.kind, names), unit=unit,
                         inputs=names if spec.kind != "yield" else [], bars=got)
 

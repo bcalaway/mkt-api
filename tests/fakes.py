@@ -51,7 +51,12 @@ MATURED = SecuritySummary(501, "UST-B-2026-01-02", "912797AA1", "bill", maturity
 NOTE_ROW = SecuritySummary(500, "UST-4.25-2035-08-15", "91282CNC1", "note", term="10-Year", original_term="10-Year",
                            coupon_rate="0.0425", issue_date="2025-08-15", maturity_date="2035-08-15", status="active",
                            on_the_run=("UST-10Y-OTR",))
-ALL = [SIX_WEEK, TWO, TEN, NOTE]
+# Fixings (phase 4, step 4): a rate in percent, an FX rate as printed.
+SOFR = Instrument(600, "SOFR", "", "Secured Overnight Financing Rate", type="rate_fixing", currency="USD",
+                  calendar="SIFMA-US", identifiers=(Identifier("NYFED-SOFR", "SOFR"),))
+USDJPY = Instrument(601, "USDJPY-H10", "", "H.10 noon buying rate: yen per dollar", type="fx_fixing", currency="JPY",
+                    calendar="FED", identifiers=(Identifier("FRB-H10-RATES", "RXI_N.B.JA"),))
+ALL = [SIX_WEEK, TWO, TEN, NOTE, SOFR, USDJPY]
 
 # sec_id -> date -> (value, source)
 QUOTES = {
@@ -62,6 +67,9 @@ QUOTES = {
 }
 # FedInvest end-of-day prices, per 100: sec_id -> date -> (value, source)
 PRICES = {500: {"2026-09-30": ("99.5", "TD-PRICES"), "2026-10-01": ("99.828125", "TD-PRICES")}}
+RATES = {600: {"2026-10-01": ("0.0388", "NYFED-SOFR"), "2026-10-02": ("0.039", "NYFED-SOFR")},
+         601: {"2026-10-01": ("157.8100", "FRB-H10-RATES"), "2026-10-02": ("158.0200", "FRB-H10-RATES")}}
+BY_FIELD = {"price": PRICES, "rate": RATES}
 
 
 class FakeSecurities:
@@ -119,7 +127,7 @@ class FakeQuotes:
 
     def series(self, sec_ids, start, end, source="", field="yield"):
         self.calls.append(("series", tuple(sec_ids), start, end, source) + ((field,) if field != "yield" else ()))
-        data = PRICES if field == "price" else QUOTES
+        data = BY_FIELD.get(field, QUOTES)
         return [Series(i, [Point(d, v, s) for d, (v, s) in sorted(data.get(i, {}).items()) if start <= d <= end])
                 for i in sec_ids]
 
@@ -128,7 +136,7 @@ class FakeQuotes:
         from app.api import bars
 
         self.calls.append(("bars", tuple(sec_ids), start, end, interval, source) + ((field,) if field != "yield" else ()))
-        data = PRICES if field == "price" else QUOTES
+        data = BY_FIELD.get(field, QUOTES)
         out = []
         for i in sec_ids:
             daily = [(d, Decimal(v), s) for d, (v, s) in sorted(data.get(i, {}).items()) if start <= d <= end]
@@ -140,7 +148,7 @@ class FakeQuotes:
         self.calls.append(("latest", tuple(sec_ids), field))
         out = []
         for i in sec_ids:
-            days = (PRICES if field == "price" else QUOTES).get(i, {})
+            days = BY_FIELD.get(field, QUOTES).get(i, {})
             d = max(days, default="")
             out.append(Latest(i, d, *(days[d] if d else ("", ""))))
         return out

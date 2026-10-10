@@ -232,7 +232,8 @@
             "enum": [
               "%",
               "bp",
-              "price"
+              "price",
+              "value"
             ],
             "title": "Unit",
             "type": "string"
@@ -1091,6 +1092,16 @@
           },
           "type": {
             "title": "Type",
+            "type": "string"
+          },
+          "unit": {
+            "default": "%",
+            "enum": [
+              "%",
+              "price",
+              "value"
+            ],
+            "title": "Unit",
             "type": "string"
           }
         },
